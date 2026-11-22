@@ -5,6 +5,7 @@ rules_version = '2';
 // - Si entra in una lega solo conoscendo la password: l'iscrizione scrive l'impronta (SHA-256)
 //   della password e la regola controlla che esista leghe/{lega}/chiavi/{impronta}, che nessuno può leggere.
 // - Ogni giocatore scrive solo la PROPRIA schedina: leghe/{lega}/schedine/{suoUid}/giornate/{gNN}.
+// - Il super admin (solo l'account di Nicola) è organizzatore di TUTTE le leghe e vede tutto.
 // - La scadenza è controllata con l'ora del server (request.time).
 // - Dopo la consegna la schedina è bloccata; l'ora di consegna la mette il server.
 service cloud.firestore {
@@ -12,6 +13,14 @@ service cloud.firestore {
 
     function signedIn() { return request.auth != null; }
     function uid() { return request.auth.uid; }
+    // super admin: un solo account (Nicola), scritto qui e quindi non modificabile dall'app
+    function isSuper() { return signedIn() && request.auth.uid == '6lew6rv9qNQpIOqFKnIYNv86Itg2'; }
+
+    // stato tecnico dell'aggiornamento automatico: lo legge solo il super admin
+    match /sistema/{d} {
+      allow read: if isSuper();
+      allow write: if false;
+    }
 
     // Calendario e risultati di Serie A: li scrive solo lo script di aggiornamento.
     match /serieA/{g} {
@@ -29,7 +38,7 @@ service cloud.firestore {
 
     match /leghe/{lega} {
       function L() { return get(/databases/$(database)/documents/leghe/$(lega)).data; }
-      function isOwner() { return signedIn() && L().owner == uid(); }
+      function isOwner() { return isSuper() || (signedIn() && L().owner == uid()); }
       function isIn() { return signedIn() && (isOwner() || exists(/databases/$(database)/documents/leghe/$(lega)/iscritti/$(uid()))); }
       function cfg() { return get(/databases/$(database)/documents/leghe/$(lega)/fantabet/config).data; }
       function isMember(u) { return 'members' in cfg() && u in cfg().members.values(); }

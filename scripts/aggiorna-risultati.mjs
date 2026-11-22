@@ -17,7 +17,8 @@
 //   1. per ogni giornata non ancora calcolata: riempie i risultati al 90° delle partite finite
 //      e aggiunge i marcatori (autogol esclusi). Non sovrascrive MAI un risultato già scritto,
 //      così le correzioni manuali dell'organizzatore restano.
-//   2. quando tutte le partite hanno un risultato (o sono segnate come nulle) conferma la giornata.
+//   2. quando tutte le partite hanno un risultato (o sono segnate come nulle) E i marcatori delle partite
+//      riempite in automatico sono arrivati (al massimo si aspettano 48 ore) conferma la giornata.
 //   3. se l'ultima giornata è chiusa, crea la successiva con il calendario ufficiale e la scadenza
 //      1 minuto prima del primo calcio d'inizio.
 //   ESPN si interroga solo quando serve (un mese di partite per chiamata).
@@ -150,7 +151,10 @@ for (const n of Object.keys(rounds).map(Number).sort((a, b) => a - b)) {
     } else if (VOID.includes(f.status)) waiting.push(`${m.home}-${m.away} rinviata/sospesa (l'organizzatore decide se segnarla nulla)`);
     else if (!isNum(m.hg) && new Date(f.date).getTime() < now.getTime()) waiting.push(`${m.home}-${m.away}`);
   }
-  const complete = ms.every(m => m.nullo || (isNum(m.hg) && isNum(m.ag)));
+  // si chiude solo quando ci sono anche i marcatori: dopo la chiusura non si riguardano più
+  const complete = ms.every(m => m.nullo || (isNum(m.hg) && isNum(m.ag) && (!m.autoRes || m.scorersDone)));
+  const noScorers = ms.filter(m => !m.nullo && isNum(m.hg) && m.autoRes && !m.scorersDone).map(m => `${m.home}-${m.away}`);
+  if (noScorers.length) waiting.push(`marcatori di ${noScorers.join(', ')}`);
   await rounds[n].ref.update({ matches: ms, scorers, calcolata: complete });
   r.calcolata = complete; r.matches = ms; r.scorers = scorers;
   note(n, `${filled} risultati e ${newScorers} marcatori nuovi.` + (waiting.length && !complete ? ` In attesa: ${waiting.join(', ')}.` : ''));
@@ -224,7 +228,8 @@ for (const L of leagues) {
     }
     const upd = {};
     if (!r.deadline && M.deadline) { upd.deadline = M.deadline; if (M.deadlineTs) upd.deadlineTs = M.deadlineTs; changed = true; }
-    const complete = ms.length > 0 && ms.every(m => m.nullo || (isNum(m.hg) && isNum(m.ag)));
+    // la lega si chiude solo dopo la copia ufficiale (che aspetta anche i marcatori)
+    const complete = !!M.calcolata && ms.length > 0 && ms.every(m => m.nullo || (isNum(m.hg) && isNum(m.ag)));
     if (complete) { upd.calcolata = true; changed = true; }
     if (changed) {
       await R.ref.update({ ...upd, matches: ms, scorers: sc });
