@@ -134,3 +134,37 @@ export const db = fs && {
   },
 };
 export const deadlineTsOf = iso => { const d = iso ? new Date(iso) : null; return d && !isNaN(d) ? Timestamp.fromDate(d) : null; };
+
+/* ---------- notifiche sul telefono (Firebase Cloud Messaging) ---------- */
+// Ogni dispositivo che le attiva salva il suo "indirizzo" in utenti/{uid}/push/{id}:
+// le manda lo script di aggiornamento (GitHub Actions), che legge anche le preferenze utenti/{uid}.notifiche.
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent);
+const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+let msgMod = null;
+const loadMsg = async () => (msgMod = msgMod || await import('firebase/messaging'));
+export async function pushStatus() {
+  if (!app || !('serviceWorker' in navigator) || !('Notification' in window)) return isIOS() && !standalone() ? 'ios-home' : 'no';
+  try { if (!(await (await loadMsg()).isSupported())) return isIOS() && !standalone() ? 'ios-home' : 'no'; } catch (e) { return 'no'; }
+  if (Notification.permission === 'denied') return 'blocked';
+  let on = false; try { on = localStorage.getItem('fb-push') === '1'; } catch (e) {}
+  return Notification.permission === 'granted' && on ? 'on' : 'off';
+}
+const tokenId = t => t.replace(/[^A-Za-z0-9_-]/g, '_').slice(-120);
+export async function enablePush(uid) {
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') return perm === 'denied' ? 'blocked' : 'off';
+  const m = await loadMsg();
+  const reg = await navigator.serviceWorker.register('/sw.js');
+  await navigator.serviceWorker.ready;
+  const token = await m.getToken(m.getMessaging(app), { serviceWorkerRegistration: reg });
+  if (!token) throw new Error('nessun token');
+  await setDoc(doc(fs, `utenti/${uid}/push/${tokenId(token)}`), { token, at: new Date().toISOString(), ua: navigator.userAgent.slice(0, 200) });
+  try { localStorage.setItem('fb-push', '1'); localStorage.setItem('fb-push-id', tokenId(token)); } catch (e) {}
+  return 'on';
+}
+export async function disablePush(uid) {
+  let id = null; try { id = localStorage.getItem('fb-push-id'); localStorage.removeItem('fb-push'); } catch (e) {}
+  try { const m = await loadMsg(); await m.deleteToken(m.getMessaging(app)); } catch (e) {}
+  if (id) { const { deleteDoc } = await import('firebase/firestore'); await deleteDoc(doc(fs, `utenti/${uid}/push/${id}`)).catch(() => {}); }
+  return 'off';
+}
