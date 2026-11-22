@@ -1,4 +1,4 @@
-import { db as fdb, configured, watchUser, login, logout, setLeague, slug, pwHash, deadlineTsOf } from './firebase.js';
+import { db as fdb, configured, watchUser, login, logout, setLeague, slug, pwHash, deadlineTsOf, pushStatus, enablePush, disablePush } from './firebase.js';
 (()=>{
 const GEN=window.__fbGen=(window.__fbGen||0)+1;const live=()=>window.__fbGen===GEN;
 const ROLE={A:{l:'Attaccante',p:4},C:{l:'Centrocampista',p:8},D:{l:'Difensore',p:18},P:{l:'Portiere',p:60}};
@@ -254,7 +254,7 @@ function render(){
   if(!live())return;armDeadline();
   document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===ui.tab));
   const v=$('#view');
-  const html=ui.tab==='classifica'?viewStandings():ui.tab==='giornata'?viewRound():ui.tab==='chat'?viewChat():viewRules();
+  const html=ui.account?viewAccount():ui.tab==='classifica'?viewStandings():ui.tab==='giornata'?viewRound():ui.tab==='chat'?viewChat():viewRules();
   if(html===lastHtml&&v.firstChild)return;
   lastHtml=html;v.innerHTML=html;
 }
@@ -338,6 +338,7 @@ function viewRound(){
   const n=currentG();const r=rounds[n];
   let h=`<div class="rhead"><button class="arrow" data-act="prev" aria-label="Giornata precedente" ${n<=1?'disabled':''}>‹</button><div class="gnum">Giornata ${n}</div><button class="arrow" data-act="next" aria-label="Giornata successiva" ${n>=38?'disabled':''}>›</button>
     ${r?(r.calcolata?'<span class="chip ok">Calcolata</span>':(pastDl(r)?'<span class="chip">Chiusa</span>':'<span class="chip">Aperta</span>')):''}</div>`;
+  if(pushSt==='off'&&!pushNo())h+=`<section class="sheet"><div class="row spread"><div><b>Vuoi le notifiche?</b><div class="small muted">Giornata aperta, promemoria prima della scadenza, 1X2, risultati esatti e marcatori presi.</div></div><div class="row"><button class="btn primary" data-act="push-on">Attiva</button><button class="btn" data-act="push-no">No grazie</button></div></div></section>`;
   if(!r){return h+`<section class="sheet empty"><div>La giornata ${n} non è ancora stata creata.</div>${me.owner?`<div class="small">L'aggiornamento automatico crea da solo la prossima giornata con il calendario ufficiale. Se vuoi, creala vuota e scrivi le partite a mano.</div><div class="row" style="justify-content:center"><button class="btn" data-act="create">Crea vuota</button></div>`:'<div class="small">La crea l\'organizzatore (o l\'aggiornamento automatico): appena è pronta compare qui.</div>'}${autoMsg(n)}</section>`}
   if(r.deadline){const past=new Date(r.deadline)<new Date();h+=`<div class="small ${past?'muted':''}">Consegna pronostici entro <b>${esc(fmtDeadline(r.deadline))}</b>${past?' · chiusa':''}</div>`}
   if(ui.sub!=='pronostici')h+=autoBar(n,r);
@@ -450,10 +451,11 @@ function viewRules(){
   <section class="sheet"><h2>Spareggi a fine anno</h2><div>Record di giornata, poi punti della sola colonna 1X2, poi risultati esatti presi, poi sorteggio o partita secca.</div></section>`}
 
 /* ---------- events ---------- */
-document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;ui.tab=b.dataset.tab;saveUi();render()});
+document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;ui.account=false;ui.tab=b.dataset.tab;saveUi();render()});
 $('#view').addEventListener('click',async e=>{
   const b=e.target.closest('[data-act]');if(!b)return;if(b.disabled){log('disabled-click',{act:b.dataset.act});return}const a=b.dataset.act;const n=currentG();const r=rounds[n];
   if(a==='go-round'){ui.tab='giornata';saveUi();render();return}
+  if(a==='push-on'||a==='push-off'||a==='push-no'||a==='pref'||a==='acct-back'||a==='acct-logout')return accountAct(a,b);
   if(a==='chat-send')return sendChat();
   if(a==='join'){if(!db||!me.id)return;try{await db.doc('schedine/'+me.id).set({at:new Date().toISOString()});requests=[...new Set([...requests,me.id])];toast('Richiesta inviata all\'organizzatore.')}catch(err){toast(err?.code==='invalid_argument'?'Non hai il permesso di partecipare: chiedi all\'organizzatore di invitarti come Editor.':errMsg(err))}render();return}
   const ADMIN=['create','add-adj','ask-del-adj','del-adj','edit-teams','add-scorer','del-scorer','status','confirm','reopen','reopen-yes','add-player','ask-add-player','unlock','unlock-yes','owner-unlock','relock'];
@@ -546,7 +548,10 @@ watchUser(async u=>{
   const lo=document.getElementById('logout');if(lo)lo.hidden=!u;
   if(!u){if(started){location.reload();return}loginView();return}
   if(started)return;started=true;
-  me={id:u.uid,owner:false,super:u.uid===SUPER_UID};db=fdb;myName=u.displayName||'Partecipante';
+  user=u;me={id:u.uid,owner:false,super:u.uid===SUPER_UID};db=fdb;
+  const ab=document.getElementById('account-btn');if(ab){ab.hidden=false;ab.onclick=()=>openAccount()}
+  pushStatus().then(st=>{pushSt=st;requestRender()}).catch(()=>{});
+  db.doc('utenti/'+u.uid).onSnapshot(s=>{acct=s.data()||{};if(ui.account)refreshAccount()},()=>{});myName=u.displayName||'Partecipante';
   await db.doc('utenti/'+u.uid).set({name:myName,at:new Date().toISOString()}).catch(()=>{});
   let lid=null;try{lid=localStorage.getItem('fb-lega')}catch(e){}
   if(lid){try{setLeague(lid);const L=await db.doc('leghe/'+lid).get();const ok=L&&(me.super||L.owner===me.id||await db.doc('iscritti/'+me.id).get().then(x=>!!x).catch(()=>false));if(ok){openLeague(lid,L);return}}catch(e){}}
@@ -607,6 +612,39 @@ async function createLeague(nome,pw){
       await db.doc('giornate/'+d.id).raw({...rest,preds:{},calcolata:false,...(ts?{deadlineTs:ts}:{})})}}catch(e){}
   await remember(id,nome);openLeague(id,{nome,owner:me.id});
 }
+/* ---------- account: dati e preferenze (notifiche) ---------- */
+let pushSt='no',acct={},inLeague=false,pushBusy=false;
+const pushNo=()=>{try{return localStorage.getItem('fb-push-no')==='1'}catch(e){return false}};
+const NOTIF=[['aperta','Giornata aperta (con la scadenza)',true],['promemoria','Promemoria 3 ore prima della scadenza, se non hai consegnato',true],['x12','1X2 preso',true],['esatto','Risultato esatto preso',true],['marcatore','Il tuo marcatore ha segnato',true],['risultati','Tutti i risultati, anche quando il tuo 1X2 è sbagliato',false],['chiusa','Giornata confermata in classifica',true]];
+const prefOn=(k,def)=>acct.notifiche?.[k]===undefined?def:!!acct.notifiche[k];
+function viewAccount(){
+  const leghe=Object.entries(acct.leghe||{});const pid=inLeague?myPid():null;
+  const role=!inLeague?'':me.super&&!cfg.members?.[pid]&&cfg.owner!==me.id?'super admin':me.owner?'organizzatore':pid?'giocatore':'iscritto';
+  const pst={on:'<span class="chip ok">Attive su questo dispositivo</span>',off:'<span class="chip">Spente su questo dispositivo</span>',blocked:'<span class="chip">Bloccate</span>','ios-home':'<span class="chip">Serve la schermata Home</span>',no:'<span class="chip">Non disponibili</span>'}[pushSt]||'';
+  const help={blocked:'Le hai bloccate per questo sito: riattivale dalle impostazioni del browser o del telefono (Notifiche), poi torna qui.','ios-home':'Su iPhone le notifiche funzionano solo con l\'app aggiunta alla schermata Home: tocca Condividi e poi «Aggiungi alla schermata Home», poi apri l\'app da lì.',no:'Questo browser non supporta le notifiche. Prova con Chrome o con l\'app installata.'}[pushSt]||'';
+  return`<section class="sheet"><div class="row spread"><h2>Account</h2><button class="btn" data-act="acct-back">Indietro</button></div>
+    <div class="row">${user?.photoURL?`<img src="${esc(user.photoURL)}" alt="" width="48" height="48" style="border-radius:50%" referrerpolicy="no-referrer">`:''}<div><div><b>${esc(user?.displayName||myName||'')}</b>${me.super?' <span class="chip gold">Super admin</span>':''}</div><div class="small muted">${esc(user?.email||'')}</div></div></div>
+    <div class="small">Leghe: ${leghe.length?leghe.map(([id,n])=>esc(n)).join(', '):'nessuna'}${inLeague?` · in questa lega sei <b>${esc(role)}</b>${pid?` (${esc(pname(pid))})`:''}`:''}</div>
+    <div class="small muted">Ultimo accesso ${esc(acct.at?new Date(acct.at).toLocaleString('it-IT',{timeZone:'Europe/Rome'}):'—')}</div></section>
+  <section class="sheet"><div class="row spread"><h2>Notifiche</h2>${pst}</div>
+    ${pushSt==='off'?'<div class="row"><button class="btn primary" data-act="push-on">Attiva su questo dispositivo</button></div>':pushSt==='on'?'<div class="row"><button class="btn" data-act="push-off">Spegni su questo dispositivo</button></div>':`<div class="small">${help}</div>`}
+    <div class="small muted">Scegli cosa ricevere (vale per tutti i tuoi dispositivi). Gli avvisi arrivano entro 20 minuti, dalle 11 a mezzanotte circa.</div>
+    ${NOTIF.map(([k,l,d])=>`<label class="row" style="gap:10px;cursor:pointer"><input type="checkbox" data-act="pref" data-k="${k}" ${prefOn(k,d)?'checked':''}><span>${esc(l)}</span></label>`).join('')}</section>
+  <section class="sheet"><div class="row"><button class="btn danger" data-act="acct-logout">Esci dall'account</button></div></section>`}
+function refreshAccount(){if(inLeague)return requestRender();$('#view').innerHTML=viewAccount()}
+function openAccount(){ui.account=true;if(inLeague){lastHtml='';render()}else{document.querySelector('.tabs').hidden=true;refreshAccount()}}
+async function accountAct(a,b){
+  if(a==='acct-logout')return logout();
+  if(a==='acct-back'){ui.account=false;if(inLeague)render();else leagueView();return}
+  if(a==='push-no'){try{localStorage.setItem('fb-push-no','1')}catch(e){}lastHtml='';render();return}
+  if(a==='pref'){const k=b.dataset.k;const def=NOTIF.find(x=>x[0]===k)?.[2];const val=!prefOn(k,def);acct={...acct,notifiche:{...(acct.notifiche||{}),[k]:val}};
+    db.doc('utenti/'+me.id).set({notifiche:{[k]:val}}).catch(e=>toast(errMsg(e)));return}
+  if(pushBusy)return;pushBusy=true;
+  try{pushSt=a==='push-on'?await enablePush(me.id):await disablePush(me.id);
+    toast(pushSt==='on'?'Notifiche attivate su questo dispositivo.':pushSt==='blocked'?'Notifiche bloccate: riattivale dalle impostazioni del telefono.':'Notifiche spente su questo dispositivo.')}
+  catch(e){toast('Non sono riuscito ad attivare le notifiche ('+(e?.code||e?.message||'errore')+').')}
+  finally{pushBusy=false;lastHtml='';if(ui.account&&!inLeague)refreshAccount();else render()}}
+
 /* ---------- pannello super admin (solo SUPER_UID; le regole bloccano comunque gli altri) ---------- */
 const fmtDt=iso=>{try{return iso?new Date(iso).toLocaleString('it-IT',{timeZone:'Europe/Rome',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}catch(e){return'—'}};
 async function superView(){
@@ -638,7 +676,7 @@ async function superView(){
   v.querySelectorAll('[data-sa-open]').forEach(b=>b.onclick=()=>{const x=info.find(i=>i.id===b.dataset.saOpen);if(x)openLeague(x.id,x.L)});
 }
 function openLeague(id,L){
-  setLeague(id);try{localStorage.setItem('fb-lega',id)}catch(e){}
+  inLeague=true;ui.account=false;setLeague(id);try{localStorage.setItem('fb-lega',id)}catch(e){}
   document.querySelector('.tabs').hidden=false;
   const ln=document.getElementById('lega-nome');if(ln){ln.textContent=(L.nome||id)+(me.super&&L.owner!==me.id?' (super admin)':'');ln.parentElement.hidden=false}
   render();

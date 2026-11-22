@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "deploy": "vite build && firebase deploy --only hosting,firestore",
     "import": "node scripts/import-firestore.mjs",
-    "aggiorna": "node scripts/aggiorna-risultati.mjs"
+    "aggiorna": "node scripts/aggiorna-risultati.mjs",
+    "prova-notifica": "node scripts/notifiche.mjs prova"
   },
   "dependencies": {
     "firebase": "^11.10.0"

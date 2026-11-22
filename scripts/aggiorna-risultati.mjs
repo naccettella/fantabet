@@ -25,6 +25,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { notifica } from './notifiche.mjs';
 
 const saFile = new URL('../service-account.json', import.meta.url);
 const sa = process.env.FIREBASE_SERVICE_ACCOUNT ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
@@ -197,6 +198,7 @@ if (last > 0 && last < 38 && lastClosed && now.getTime() - lastTry > 6 * 3600e3)
 // Nelle leghe si riempiono solo i campi vuoti: le correzioni a mano dell'organizzatore restano.
 const leagues = (await fs.collection('leghe').get()).docs;
 let touched = 0;
+const events = []; // per le notifiche: { L, tipo, n, ... }
 for (const L of leagues) {
   const lr = {};
   (await L.ref.collection('giornate').get()).docs.forEach(d => { const x = d.data(); if (isNum(x.num)) lr[+x.num] = { ref: d.ref, data: x }; });
@@ -210,6 +212,7 @@ for (const L of leagues) {
       const { deadlineTs, ...rest } = M;
       await L.ref.collection('giornate').doc(id).set({ ...rest, ...(deadlineTs ? { deadlineTs } : {}), preds: {}, calcolata: false });
       touched++; lastN = n; msgs.push(`Giornata ${n} pronta.`);
+      events.push({ L, tipo: 'aperta', n, deadline: M.deadline });
       continue;
     }
     const r = R.data; if (r.calcolata) continue;
@@ -220,17 +223,17 @@ for (const L of leagues) {
       if (!m && ms[i] && !ms[i].home) { ms[i] = { ...mm, hg: null, ag: null }; m = ms[i]; changed = true; }
       if (!m) return;
       if (!m.apiId && mm.apiId) { m.apiId = mm.apiId; m.kickoff = mm.kickoff; changed = true; }
-      if (!m.nullo && (!isNum(m.hg) || !isNum(m.ag)) && isNum(mm.hg) && isNum(mm.ag)) { m.hg = mm.hg; m.ag = mm.ag; changed = true; filled++; }
+      if (!m.nullo && (!isNum(m.hg) || !isNum(m.ag)) && isNum(mm.hg) && isNum(mm.ag)) { m.hg = mm.hg; m.ag = mm.ag; changed = true; filled++; events.push({ L, tipo: 'risultato', n, i: ms.indexOf(m), m: { ...m } }); }
     });
     const sc = [...(r.scorers || [])];
     for (const s of (M.scorers || []).filter(s => s.auto)) {
-      if (!sc.some(x => x.auto && x.apiFixture === s.apiFixture && tokens(x.name) === tokens(s.name))) { sc.push(s); changed = true; }
+      if (!sc.some(x => x.auto && x.apiFixture === s.apiFixture && tokens(x.name) === tokens(s.name))) { sc.push(s); changed = true; events.push({ L, tipo: 'gol', n, s }); }
     }
     const upd = {};
     if (!r.deadline && M.deadline) { upd.deadline = M.deadline; if (M.deadlineTs) upd.deadlineTs = M.deadlineTs; changed = true; }
     // la lega si chiude solo dopo la copia ufficiale (che aspetta anche i marcatori)
     const complete = !!M.calcolata && ms.length > 0 && ms.every(m => m.nullo || (isNum(m.hg) && isNum(m.ag)));
-    if (complete) { upd.calcolata = true; changed = true; }
+    if (complete) { upd.calcolata = true; changed = true; events.push({ L, tipo: 'chiusa', n }); }
     if (changed) {
       await R.ref.update({ ...upd, matches: ms, scorers: sc });
       touched++; lastN = n;
@@ -244,6 +247,11 @@ for (const L of leagues) {
   }
 }
 
+/* ============ 3. notifiche sul telefono (mai bloccanti) ============ */
+let sentInfo = '';
+try { sentInfo = await notifica(fs, leagues, events, now); } catch (e) { sentInfo = 'notifiche non inviate: ' + (e?.message || e); }
+
+console.log(sentInfo);
 console.log(Object.entries(notes).map(([n, t]) => `G${n}: ${t.join(' ')}`).join('\n') || 'Niente da aggiornare in Serie A.',
   `\nLeghe: ${leagues.length}, giornate aggiornate nelle leghe: ${touched} (chiamate API: ${calls})`);
 process.exit(0);
