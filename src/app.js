@@ -7,6 +7,8 @@ let PIDS=['p1','p2','p3'];
 const MULT_EX=[0,1,2.5,6];
 let db=null, stato=null, dbState='loading', adj=[];
 /* who is viewing: owner = admin of the competition; uid links an account to a player slot via cfg.members */
+/* super admin: solo l'account di Nicola (lo stesso uid è scritto nelle regole Firestore) */
+const SUPER_UID='6lew6rv9qNQpIOqFKnIYNv86Itg2';
 let user=null, me={id:null,owner:false}, slips={}, requests=[], profs={};const slipSubs={},slipTimers={},slipInflight={},slipChains={};
 function log(){}
 const saveFail={};
@@ -544,10 +546,10 @@ watchUser(async u=>{
   const lo=document.getElementById('logout');if(lo)lo.hidden=!u;
   if(!u){if(started){location.reload();return}loginView();return}
   if(started)return;started=true;
-  me={id:u.uid,owner:false};db=fdb;myName=u.displayName||'Partecipante';
+  me={id:u.uid,owner:false,super:u.uid===SUPER_UID};db=fdb;myName=u.displayName||'Partecipante';
   await db.doc('utenti/'+u.uid).set({name:myName,at:new Date().toISOString()}).catch(()=>{});
   let lid=null;try{lid=localStorage.getItem('fb-lega')}catch(e){}
-  if(lid){try{setLeague(lid);const L=await db.doc('leghe/'+lid).get();const ok=L&&(L.owner===me.id||await db.doc('iscritti/'+me.id).get().then(x=>!!x).catch(()=>false));if(ok){openLeague(lid,L);return}}catch(e){}}
+  if(lid){try{setLeague(lid);const L=await db.doc('leghe/'+lid).get();const ok=L&&(me.super||L.owner===me.id||await db.doc('iscritti/'+me.id).get().then(x=>!!x).catch(()=>false));if(ok){openLeague(lid,L);return}}catch(e){}}
   setLeague(null);try{localStorage.removeItem('fb-lega')}catch(e){}
   leagueView();
 });
@@ -557,13 +559,14 @@ async function leagueView(msg){
   const v=$('#view');document.querySelector('.tabs').hidden=true;
   let mine={};try{mine=(await db.doc('utenti/'+me.id).get())?.leghe||{}}catch(e){}
   const list=Object.entries(mine);
-  v.innerHTML=`${list.length?`<section class="sheet"><h2>Le tue leghe</h2><div class="players">${list.map(([id,n])=>`<button data-lega="${esc(id)}">${esc(n)}</button>`).join('')}</div></section>`:''}
+  v.innerHTML=`${me.super?`<section class="sheet"><div class="row spread"><h2>Super admin</h2><button class="btn primary" id="sa-go">Apri pannello</button></div><div class="small muted">Vedi tutte le leghe, gli utenti e l'aggiornamento automatico, ed entri in ogni lega come organizzatore.</div></section>`:''}${list.length?`<section class="sheet"><h2>Le tue leghe</h2><div class="players">${list.map(([id,n])=>`<button data-lega="${esc(id)}">${esc(n)}</button>`).join('')}</div></section>`:''}
   <section class="sheet"><h2>Entra in una lega</h2><div class="small muted">Scrivi il nome della lega e la password che ti ha dato l'organizzatore.</div>
     <div class="row"><input type="text" id="j-nome" placeholder="Nome della lega" style="flex:1 1 160px"><input type="password" id="j-pw" placeholder="Password" style="flex:1 1 140px"><button class="btn primary" id="j-go">Entra</button></div><div id="j-extra"></div></section>
   <section class="sheet"><h2>Crea una lega</h2><div class="small muted">Diventi l'organizzatore. Poi manda agli amici il link dell'app, il nome della lega e la password.</div>
     <div class="row"><input type="text" id="c-nome" placeholder="Nome della lega" style="flex:1 1 160px"><input type="password" id="c-pw" placeholder="Password (almeno 4 caratteri)" style="flex:1 1 140px"><button class="btn" id="c-go">Crea</button></div></section>
   ${msg?`<div class="small neg">${esc(msg)}</div>`:''}`;
   v.querySelectorAll('[data-lega]').forEach(b=>b.onclick=async()=>{setLeague(b.dataset.lega);const L=await db.doc('leghe/'+b.dataset.lega).get().catch(()=>null);if(!L)return leagueView('Questa lega non esiste più.');openLeague(b.dataset.lega,L)});
+  if(me.super)$('#sa-go').onclick=()=>superView();
   $('#j-go').onclick=()=>joinLeague($('#j-nome').value,$('#j-pw').value).catch(e=>leagueView(e.msg||('Errore: '+(e?.code||e?.message||e))));
   $('#c-go').onclick=()=>createLeague($('#c-nome').value,$('#c-pw').value).catch(e=>leagueView(e.msg||('Errore: '+(e?.code||e?.message||e))));
 }
@@ -604,16 +607,46 @@ async function createLeague(nome,pw){
       await db.doc('giornate/'+d.id).raw({...rest,preds:{},calcolata:false,...(ts?{deadlineTs:ts}:{})})}}catch(e){}
   await remember(id,nome);openLeague(id,{nome,owner:me.id});
 }
+/* ---------- pannello super admin (solo SUPER_UID; le regole bloccano comunque gli altri) ---------- */
+const fmtDt=iso=>{try{return iso?new Date(iso).toLocaleString('it-IT',{timeZone:'Europe/Rome',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}catch(e){return'—'}};
+async function superView(){
+  if(!me.super)return leagueView();
+  const v=$('#view');document.querySelector('.tabs').hidden=true;setLeague(null);
+  v.innerHTML='<section class="sheet empty"><div>Carico tutte le leghe…</div></section>';
+  const safe=p=>p.catch(()=>null);
+  const [leghe,utenti,sys]=await Promise.all([safe(db.collection('leghe').get()),safe(db.collection('utenti').get()),safe(db.doc('sistema/aggiornamento').get())]);
+  const users={};(utenti||[]).forEach(u=>{users[u.id]=u.data||{}});
+  const uname=id=>users[id]?.name||('account '+String(id||'').slice(0,6));
+  const info=await Promise.all((leghe||[]).map(async l=>{const b='leghe/'+l.id+'/';
+    const [c,isc,gio,st]=await Promise.all([safe(db.doc(b+'fantabet/config').get()),safe(db.collection(b+'iscritti').get()),safe(db.collection(b+'giornate').get()),safe(db.doc(b+'fantabet/stato').get())]);
+    return{id:l.id,L:l.data||{},c:c||{},isc:isc||[],gio:gio||[],st}}));
+  info.sort((a,b)=>String(a.L.nome||a.id).localeCompare(String(b.L.nome||b.id)));
+  const card=x=>{const pl=x.c.players||{},mem=x.c.members||{};const keys=Object.keys(pl).sort((a,b)=>a.slice(1)-b.slice(1));
+    const calc=x.gio.filter(g=>g.data?.calcolata).length;
+    return`<section class="sheet"><div class="row spread"><h2>${esc(x.L.nome||x.id)}</h2><button class="btn primary" data-sa-open="${esc(x.id)}">Entra come admin</button></div>
+      <div class="small">Organizzatore: <b>${esc(uname(x.L.owner))}</b> · creata ${esc(fmtDt(x.L.creata))}</div>
+      <div class="small">Giornate: <b>${x.gio.length}</b> (confermate ${calc}) · Iscritti: <b>${x.isc.length}</b></div>
+      <div class="small">Giocatori: ${keys.map(k=>`${esc(pl[k])}${mem[k]?` <span class="muted">(${esc(uname(mem[k]))})</span>`:' <span class="muted">(senza account)</span>'}`).join(' · ')||'—'}</div>
+      ${x.st?`<div class="small muted">Ultimo aggiornamento automatico: ${esc(x.st.stato||'')} ${esc(fmtDt(x.st.finito))}${x.st.messaggio?' · '+esc(String(x.st.messaggio).slice(0,160)):''}</div>`:''}</section>`};
+  const ul=Object.entries(users).sort((a,b)=>String(a[1].name||'').localeCompare(String(b[1].name||'')));
+  v.innerHTML=`<section class="sheet"><div class="row spread"><h2>Super admin</h2><button class="btn" id="sa-back">Indietro</button></div>
+      <div class="small muted">${info.length} leghe · ${ul.length} utenti registrati</div></section>
+    ${info.map(card).join('')||'<section class="sheet small muted">Nessuna lega.</section>'}
+    <section class="sheet"><h2>Utenti</h2>${ul.map(([id,u])=>`<div class="small"><b>${esc(u.name||'—')}</b> · leghe: ${esc(Object.values(u.leghe||{}).join(', ')||'nessuna')} · ultimo accesso ${esc(fmtDt(u.at))}</div>`).join('')||'<div class="small muted">Nessuno.</div>'}</section>
+    <section class="sheet"><h2>Sistema</h2><div class="small">${sys?Object.entries(sys).map(([k,val])=>`${esc(k)}: <b>${esc(typeof val==='object'?JSON.stringify(val):val)}</b>`).join('<br>'):'<span class="muted">Nessun dato.</span>'}</div></section>`;
+  $('#sa-back').onclick=()=>leagueView();
+  v.querySelectorAll('[data-sa-open]').forEach(b=>b.onclick=()=>{const x=info.find(i=>i.id===b.dataset.saOpen);if(x)openLeague(x.id,x.L)});
+}
 function openLeague(id,L){
   setLeague(id);try{localStorage.setItem('fb-lega',id)}catch(e){}
   document.querySelector('.tabs').hidden=false;
-  const ln=document.getElementById('lega-nome');if(ln){ln.textContent=L.nome||id;ln.parentElement.hidden=false}
+  const ln=document.getElementById('lega-nome');if(ln){ln.textContent=(L.nome||id)+(me.super&&L.owner!==me.id?' (super admin)':'');ln.parentElement.hidden=false}
   render();
   db.collection('utenti').onSnapshot(s=>{const n={};s.docs.forEach(d=>{n[d.id]={name:d.data()?.name||''}});profs=n;requestRender()},()=>{});
   db.doc('fantabet/stato').onSnapshot(s=>{stato=s.data()?JSON.parse(JSON.stringify(s.data())):null;requestRender()},()=>{});
   db.doc('fantabet/rettifiche').onSnapshot(s=>{if(adjInflight)return;adj=Array.isArray(s.data()?.items)?JSON.parse(JSON.stringify(s.data().items)):[];requestRender()},()=>{});
   db.doc('fantabet/config').onSnapshot(s=>{if(cfgTimer||cfgInflight)return;const d=s.data()?JSON.parse(JSON.stringify(s.data())):null;
-    me.owner=!!d&&d.owner===me.id;if(d?.players){cfg=d;setPlayers()}watchSlips();requestRender()},()=>{});
+    me.owner=me.super||(!!d&&d.owner===me.id);if(d?.players){cfg=d;setPlayers()}watchSlips();requestRender()},()=>{});
   db.collection('iscritti').onSnapshot(s=>{requests=s.docs.map(d=>d.id);requestRender()},()=>{});
   watchSlips();
   db.collection('registro').onSnapshot(s=>{const n={};s.docs.forEach(d=>{const x=d.data();n[d.id]=Array.isArray(x?.items)?JSON.parse(JSON.stringify(x.items)):[]});registro=n;requestRender()},()=>{});
