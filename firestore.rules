@@ -107,6 +107,11 @@ service cloud.firestore {
         allow read: if isIn();
         allow write: if isOwner();
       }
+      // stagioni chiuse: classifica finale (albo d'oro) e copia dei dati, le scrive solo l'organizzatore
+      match /stagioni/{document=**} {
+        allow read: if isIn();
+        allow write: if isOwner();
+      }
       match /registro/{id} {
         allow read: if isIn();
         allow write: if isOwner();

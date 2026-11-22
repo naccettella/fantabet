@@ -1,9 +1,13 @@
 // Backup di tutto l'archivio Firestore in un file JSON (gratis, senza piano a pagamento).
 // Gira da solo ogni settimana con GitHub Actions (.github/workflows/backup.yml): il file resta
-// scaricabile per 90 giorni nella pagina "Actions" del repository (solo se il repository è privato).
-// A mano:  npm run backup   -> crea backup-AAAA-MM-GG.json nella cartella del progetto.
+// scaricabile per 90 giorni nella pagina "Actions" del repository.
+// Il file è CIFRATO (AES-256-GCM) con una chiave ricavata dalla chiave privata dell'account di servizio:
+// anche se il repository è pubblico, lo apre solo chi ha service-account.json (ripristina-backup.mjs lo fa da solo).
+// A mano:  npm run backup   -> crea backup-AAAA-MM-GG.json.enc nella cartella del progetto
+//          (con --in-chiaro crea invece il .json leggibile).
 // I token delle notifiche (utenti/*/push) non vengono salvati: si rifanno da soli.
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { createHash, createCipheriv, randomBytes } from 'node:crypto';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore, Timestamp, GeoPoint, DocumentReference } from 'firebase-admin/firestore';
 
@@ -35,7 +39,15 @@ async function dumpCollection(col) {
 }
 for (const col of await fs.listCollections()) await dumpCollection(col);
 const day = new Date().toISOString().slice(0, 10);
-const file = process.env.BACKUP_FILE || `backup-${day}.json`;
-writeFileSync(file, JSON.stringify({ progetto: sa?.project_id || 'emulatore', creato: new Date().toISOString(), documenti: out }, null, 1));
+const plain = process.argv.includes('--in-chiaro') || !sa;
+const file = process.env.BACKUP_FILE || `backup-${day}.json${plain ? '' : '.enc'}`;
+const json = JSON.stringify({ progetto: sa?.project_id || 'emulatore', creato: new Date().toISOString(), documenti: out }, null, 1);
+if (plain) writeFileSync(file, json);
+else {
+  const key = createHash('sha256').update('fantabet-backup:' + sa.private_key).digest();
+  const iv = randomBytes(12); const c = createCipheriv('aes-256-gcm', key, iv);
+  const enc = Buffer.concat([c.update(json, 'utf8'), c.final()]);
+  writeFileSync(file, Buffer.concat([Buffer.from('FBK1'), iv, c.getAuthTag(), enc]));
+}
 console.log(`Backup fatto: ${n} documenti in ${file}`);
 process.exit(0);

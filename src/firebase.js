@@ -6,7 +6,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  connectFirestoreEmulator, doc, collection, setDoc, getDoc, getDocs, updateDoc, onSnapshot, serverTimestamp, deleteField, Timestamp
+  connectFirestoreEmulator, doc, collection, setDoc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, serverTimestamp, deleteField, Timestamp
 } from 'firebase/firestore';
 
 const envConfig = {
@@ -119,6 +119,7 @@ export const db = fs && {
       },
       raw(data, opts) { return opts ? setDoc(ref, data, opts) : setDoc(ref, data); },
       update(data) { return updateDoc(ref, data); },
+      del() { return deleteDoc(ref); },
       async get() { const s = await getDoc(ref); return s.exists() ? readDoc(path, s.data()) : null; },
       onSnapshot(cb, err) { return onSnapshot(ref, s => cb({ id: s.id, data: () => readDoc(path, s.data()) }), err); },
     };

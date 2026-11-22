@@ -105,11 +105,18 @@ const tokens = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toL
 
 
 /* ============ 1. calendario e risultati "ufficiali" in serieA/{gNN} (uguali per tutte le leghe) ============ */
-const snap = await fs.collection('serieA').get();
-const rounds = {};
-snap.docs.forEach(d => { const x = d.data(); if (isNum(x.num)) rounds[+x.num] = { ref: d.ref, data: x }; });
 const statoRef = fs.doc('sistema/aggiornamento');
 const stato = (await statoRef.get()).data() || {};
+const snap = await fs.collection('serieA').get();
+// stagione nuova: la copia ufficiale serieA/* della stagione finita si archivia e si riparte dalla giornata 1
+if (stato.stagione && +stato.stagione !== SEASON && SEASON > +stato.stagione) {
+  for (const d of snap.docs) { await fs.doc(`sistema/serieA-${stato.stagione}`).collection('giornate').doc(d.id).set(d.data()); await d.ref.delete(); }
+  await statoRef.set({ stagione: SEASON, creazioneTentata: null }, { merge: true });
+  stato.creazioneTentata = null;
+  console.log(`Nuova stagione ${SEASON}/${SEASON + 1}: archiviata la stagione ${stato.stagione}.`);
+} else if (!stato.stagione) await statoRef.set({ stagione: SEASON }, { merge: true });
+const rounds = {};
+if (+stato.stagione === SEASON || !stato.stagione) snap.docs.forEach(d => { const x = d.data(); if (isNum(x.num)) rounds[+x.num] = { ref: d.ref, data: x }; });
 const notes = {}; // numero giornata -> note
 const note = (n, t) => { (notes[n] = notes[n] || []).push(t); };
 
@@ -167,7 +174,7 @@ const last = nums.length ? nums[nums.length - 1] : 0;
 const lastR = last ? rounds[last].data : null;
 const lastClosed = !lastR || lastR.calcolata || (lastR.deadline && new Date(lastR.deadline) < now);
 const lastTry = stato.creazioneTentata ? new Date(stato.creazioneTentata).getTime() : 0;
-if (last > 0 && last < 38 && lastClosed && now.getTime() - lastTry > 6 * 3600e3) {
+if (last < 38 && lastClosed && now.getTime() - lastTry > 6 * 3600e3) {
   const n = last + 1;
   // partite non ancora in nessuna giornata salvata, in ordine di data, una per squadra, entro 5 giorni dalla prima
   const used = new Set(Object.values(rounds).flatMap(x => (x.data.matches || []).filter(m => m.home).map(m => pairKey(m.home, m.away))));
@@ -183,7 +190,7 @@ if (last > 0 && last < 38 && lastClosed && now.getTime() - lastTry > 6 * 3600e3)
   if (fx.length === 10 || (fx.length >= 7 && new Date(fx[0].date) - now < 3 * 86400e3)) {
     const deadline = new Date(new Date(fx[0].date).getTime() - 60e3);
     const doc = {
-      num: n, calcolata: false, deadline: deadline.toISOString(), deadlineTs: Timestamp.fromDate(deadline), scorers: [],
+      num: n, stagione: SEASON, calcolata: false, deadline: deadline.toISOString(), deadlineTs: Timestamp.fromDate(deadline), scorers: [],
       matches: fx.map(f => ({ home: showName(f.home), away: showName(f.away),
         when: whenLabel(f.date), hg: null, ag: null, nullo: false, apiId: f.id, kickoff: f.date })),
     };
@@ -213,6 +220,11 @@ for (const L of leagues) {
       await L.ref.collection('giornate').doc(id).set({ ...rest, ...(deadlineTs ? { deadlineTs } : {}), preds: {}, calcolata: false });
       touched++; lastN = n; msgs.push(`Giornata ${n} pronta.`);
       events.push({ L, tipo: 'aperta', n, deadline: M.deadline });
+      continue;
+    }
+    // giornata della stagione vecchia ancora nella lega: serve che l'organizzatore chiuda la stagione
+    if (M.stagione && R.data.stagione !== M.stagione) {
+      if (!msgs.some(t => t.startsWith('Nuova stagione'))) msgs.push(`Nuova stagione ${M.stagione}/${M.stagione + 1}: l'organizzatore deve chiudere la stagione vecchia (Classifica, in fondo: Albo d'oro) per ricevere le nuove giornate.`);
       continue;
     }
     const r = R.data; if (r.calcolata) continue;

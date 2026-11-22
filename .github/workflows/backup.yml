@@ -1,6 +1,6 @@
 # Backup settimanale di tutto l'archivio Firestore (ogni lunedì alle 5 circa, ora italiana).
 # Il file si scarica da GitHub: Actions > "Backup settimanale" > l'ultima esecuzione > Artifacts.
-# Resta disponibile 90 giorni. Gira SOLO se il repository è privato, perché il backup contiene i dati di tutti.
+# Resta disponibile 90 giorni. Il file è cifrato: lo apre solo scripts/ripristina-backup.mjs con service-account.json.
 name: Backup settimanale
 on:
   schedule:
@@ -8,7 +8,6 @@ on:
   workflow_dispatch: {}
 jobs:
   backup:
-    if: ${{ github.event.repository.private }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -19,9 +18,9 @@ jobs:
       - run: node scripts/backup.mjs
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          BACKUP_FILE: backup.json
+          BACKUP_FILE: backup.json.enc
       - uses: actions/upload-artifact@v4
         with:
           name: backup-firestore-${{ github.run_number }}
-          path: backup.json
+          path: backup.json.enc
           retention-days: 90

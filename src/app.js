@@ -260,6 +260,77 @@ function render(){
 }
 let lastHtml='';
 
+/* ---------- statistiche personali ---------- */
+const COLORS=['#1d5a38','#c0392b','#2e6fd8','#d4a017','#8e44ad','#16a085','#e67e22','#5d6d7e','#e84393','#00897b'];
+function viewTrend(rows,nums){if(nums.length<2)return'';
+  // posizione in classifica dopo ogni giornata (senza i punti manuali)
+  const cum={};PIDS.forEach(p=>cum[p]=0);const pos={};PIDS.forEach(p=>pos[p]=[]);
+  for(const n of nums){PIDS.forEach(p=>{cum[p]+=rows.find(r=>r.pid===p).per[n].total});
+    const sorted=[...PIDS].sort((a,b)=>cum[b]-cum[a]);PIDS.forEach(p=>pos[p].push(sorted.findIndex(q=>cum[q]===cum[p])+1))}
+  const W=600,H=40+PIDS.length*34,L=30,R=12,T=14,B=26,xs=i=>L+(W-L-R)*(i/(nums.length-1)),ys=k=>T+(H-T-B)*((k-1)/Math.max(1,PIDS.length-1));
+  let svg=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Posizione in classifica giornata per giornata" style="max-width:100%;height:auto">`;
+  for(let k=1;k<=PIDS.length;k++)svg+=`<text x="4" y="${ys(k)+4}" font-size="12" fill="currentColor" opacity=".6">${k}°</text><line x1="${L}" x2="${W-R}" y1="${ys(k)}" y2="${ys(k)}" stroke="currentColor" opacity=".1"/>`;
+  const step=Math.ceil(nums.length/12);nums.forEach((n,i)=>{if(i%step===0||i===nums.length-1)svg+=`<text x="${xs(i)}" y="${H-6}" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">G${n}</text>`});
+  PIDS.forEach((p,j)=>{const c=COLORS[j%COLORS.length];svg+=`<polyline fill="none" stroke="${c}" stroke-width="3" stroke-linejoin="round" points="${pos[p].map((k,i)=>xs(i)+','+ys(k)).join(' ')}"/>`;
+    svg+=`<circle cx="${xs(nums.length-1)}" cy="${ys(pos[p][nums.length-1])}" r="4.5" fill="${c}"/>`});
+  svg+='</svg>';
+  return`<section class="sheet"><h3>Andamento in classifica</h3>${svg}<div class="row small">${PIDS.map((p,j)=>`<span class="row" style="gap:5px"><span style="width:14px;height:4px;border-radius:2px;background:${COLORS[j%COLORS.length]}"></span>${esc(pname(p))}</span>`).join('')}</div></section>`}
+const pct=(a,b)=>b?Math.round(a/b*100)+'%':'—';
+function playerStats(rows,nums){return rows.map(r=>{let h=0,v=0,eh=0,et=0,sh=0,st=0,del=0,best=null,bestN=null;
+  for(const n of nums){const s=r.per[n];if(s.state==='consegnato')del++;h+=s.hits||0;v+=s.state==='consegnato'?s.valid:0;
+    (s.exactRows||[]).forEach(x=>{if(x.state==='preso'||x.state==='sbagliato'){et++;if(x.state==='preso')eh++}});
+    (s.scRows||[]).forEach(x=>{if(x.state==='segna'||x.state==='no'){st++;if(x.state==='segna')sh++}});
+    if(best===null||s.total>best){best=s.total;bestN=n}}
+  return{pid:r.pid,h,v,eh,et,sh,st,del,avg:nums.length?r1((r.tot-(r.adj||0))/nums.length):0,best,bestN}})}
+function viewStats(rows,nums){const st=playerStats(rows,nums);
+  return`<section class="sheet"><h3>Statistiche</h3><div class="scroll"><table><thead><tr><th class="l">Giocatore</th><th>1X2 presi</th><th>Esatti presi</th><th>Marcatori a segno</th><th>Media punti</th><th>Giornata migliore</th><th>Consegnate</th></tr></thead><tbody>${st.map(x=>`<tr><td class="l"><b>${esc(pname(x.pid))}</b></td><td>${pct(x.h,x.v)}<div class="small muted">${x.h}/${x.v}</div></td><td>${pct(x.eh,x.et)}<div class="small muted">${x.eh}/${x.et}</div></td><td>${pct(x.sh,x.st)}<div class="small muted">${x.sh}/${x.st}</div></td><td>${fmtN(x.avg)}</td><td>${x.bestN?`${fmtN(x.best)}<div class="small muted">G${x.bestN}</div>`:'—'}</td><td>${x.del}/${nums.length}</td></tr>`).join('')}</tbody></table></div></section>`}
+
+/* ---------- premi e medaglie ---------- */
+function awards(rows,nums){const out={};rows.forEach(r=>out[r.pid]={re:0,tris:0,bomber:0,golden:0,serieEx:0,seriePos:0,sempre:true,nera:0});
+  for(const n of nums){const tot=rows.map(r=>r.per[n].total);const mx=Math.max(...tot),mn=Math.min(...tot);
+    rows.forEach(r=>{const s=r.per[n],a=out[r.pid];if(s.total===mx)a.re++;if(rows.length>2&&s.total===mn&&mn<mx)a.nera++;if(s.exactHits===3)a.tris++;if(s.combo)a.bomber++;if(s.golden)a.golden++;if(s.state!=='consegnato')a.sempre=false})}
+  rows.forEach(r=>{let ce=0,cp=0;const a=out[r.pid];for(const n of nums){const s=r.per[n];ce=s.exactHits>0?ce+1:0;cp=s.total>0?cp+1:0;a.serieEx=Math.max(a.serieEx,ce);a.seriePos=Math.max(a.seriePos,cp)}});
+  return out}
+const BADGES=[['re','👑','Re della giornata','giornate chiuse con più punti di tutti'],['tris','🎯','Tris di esatti','3 risultati esatti su 3 nella stessa giornata'],['bomber','⚽','Tris di marcatori','3 marcatori su 3 a segno'],['golden','🌟','10 su 10','tutti gli 1X2 della giornata'],['serieEx','🔥','Serie di esatti','giornate di fila con almeno un esatto (la più lunga)'],['seriePos','📈','Serie positiva','giornate di fila con punti sopra lo zero (la più lunga)'],['nera','🐢','Maglia nera','giornate chiuse con meno punti di tutti']];
+function viewAwards(rows,nums){const a=awards(rows,nums);const last=nums[nums.length-1];
+  const lastBest=rows.filter(r=>r.per[last].total===Math.max(...rows.map(x=>x.per[last].total))).map(r=>pname(r.pid));
+  return`<section class="sheet"><h3>Premi e medaglie</h3><div class="small">👑 Migliore della giornata ${last}: <b>${esc(lastBest.join(', '))}</b></div>
+    ${rows.map(r=>{const x=a[r.pid];const chips=BADGES.filter(([k])=>x[k]>0).map(([k,i,l])=>`<span class="chip" title="${esc(l)}">${i} ${esc(l)}${x[k]>1||k.startsWith('serie')?' ×'+x[k]:''}</span>`);if(x.sempre&&nums.length>=3)chips.push('<span class="chip ok">✅ Sempre presente</span>');
+      return`<div><b>${esc(pname(r.pid))}</b><div class="row" style="margin-top:4px">${chips.join('')||'<span class="small muted">Ancora nessuna medaglia</span>'}</div></div>`}).join('')}
+    <details class="small muted"><summary>Cosa vuol dire ogni medaglia</summary>${BADGES.map(([k,i,l,d])=>`<div>${i} <b>${esc(l)}</b>: ${esc(d)}</div>`).join('')}<div>✅ <b>Sempre presente</b>: nessuna schedina mancata</div></details></section>`}
+
+/* ---------- stagioni: albo d'oro e chiusura della stagione ---------- */
+let stagioni=[];
+const seasonLabel=()=>{const d=new Date();const y=d.getMonth()>=6?d.getFullYear():d.getFullYear()-1;return`${y}/${String(y+1).slice(2)}`};
+function viewAlbo(){
+  let h=`<section class="sheet"><h3>Albo d'oro</h3>`;
+  if(!stagioni.length)h+=`<div class="small muted">Qui finiscono le stagioni chiuse, con la classifica finale.</div>`;
+  stagioni.forEach(st=>{const c=st.classifica||[];const open=ui.albo===st.id;
+    h+=`<div><div class="row spread"><div><b>Stagione ${esc(st.label||st.id)}</b> · 🏆 ${esc(c[0]?.name||'—')} ${c[0]?fmtN(c[0].tot):''}${c[1]?` · 2° ${esc(c[1].name)}`:''}${c[2]?` · 3° ${esc(c[2].name)}`:''}</div><button class="btn small" data-act="albo" data-id="${esc(st.id)}">${open?'Chiudi':'Classifica'}</button></div>
+      ${open?`<div class="scroll"><table><thead><tr><th>#</th><th class="l">Giocatore</th><th>Punti</th><th>Record</th><th>Esatti</th></tr></thead><tbody>${c.map(r=>`<tr class="${r.rank===1?'lead':''}"><td class="rank">${r.rank}</td><td class="l"><b>${esc(r.name)}</b></td><td class="pts">${fmtN(r.tot)}</td><td>${fmtN(r.rec??0)}</td><td>${r.ex??0}</td></tr>`).join('')}</tbody></table></div><div class="small muted">${st.giornate||0} giornate · chiusa il ${esc(fmtDeadline(st.chiusa))}${st.golden?` · Golden Rule di ${esc(st.golden.name)} (G${st.golden.n})`:''}</div>`:''}</div>`});
+  if(me.owner){
+    h+=ui.confirmSeason?`<div class="sheet" style="border-color:var(--red)"><b>Chiudere la stagione ${esc(seasonLabel())}?</b><div class="small">La classifica finale va nell'albo d'oro e la lega riparte da zero: giornate, schedine, punti manuali e registro vengono tolti (una copia resta salvata nella stagione). I giocatori restano.</div><div class="row"><button class="btn danger" data-act="season-yes">Sì, chiudi e ricomincia</button><button class="btn" data-act="season-no">Annulla</button></div></div>`
+      :`<div class="row"><button class="btn" data-act="season-ask">Chiudi la stagione e ricomincia da zero</button></div><div class="small muted">Da fare a fine campionato. Solo l'organizzatore lo vede.</div>`}
+  return h+`</section>`}
+async function closeSeason(){
+  const label=seasonLabel();let sid=slug(label)||('s'+Date.now());if(stagioni.some(s=>s.id===sid))sid+='-'+Date.now().toString(36);
+  const {rows,nums,golden}=standings();
+  toast('Chiudo la stagione…');
+  const snap={label,chiusa:new Date().toISOString(),giornate:nums.length,golden:golden?{n:golden.n,name:pname(golden.pid)}:null,rettifiche:JSON.parse(JSON.stringify(adj)),
+    classifica:rows.map(r=>({name:pname(r.pid),pid:r.pid,tot:r.tot,rank:r.rank,rec:r.rec,x12:r.x12,ex:r.ex,adj:r.adj,per:Object.fromEntries(nums.map(n=>[n,r.per[n].total]))}))};
+  await db.doc(`stagioni/${sid}`).raw(snap);
+  // copia dei dati grezzi, poi si svuota la lega
+  for(const n of Object.keys(rounds)){const g=gid(n);await db.doc(`stagioni/${sid}/giornate/${g}`).raw(JSON.parse(JSON.stringify(rounds[n])));}
+  for(const [u,byN] of Object.entries(slips))for(const n of Object.keys(byN||{})){if(!byN[n])continue;await db.doc(`stagioni/${sid}/schedine/${u}_${gid(n)}`).raw(JSON.parse(JSON.stringify(byN[n])));await db.doc(`schedine/${u}/giornate/${gid(n)}`).del().catch(()=>{})}
+  for(const n of Object.keys(rounds))await db.doc('giornate/'+gid(n)).del();
+  for(const id of Object.keys(registro||{}))await db.doc('registro/'+id).del().catch(()=>{});
+  adj=[];await db.doc('fantabet/rettifiche').raw({items:[]});
+  // riparte con le giornate di Serie A ancora da giocare (come una lega nuova)
+  try{const sa=await db.collection('serieA').get();
+    for(const d of sa){const r=d.data;if(r.calcolata)continue;const{deadlineTs,...rest}=r;const ts=deadlineTsOf(rest.deadline);
+      await db.doc('giornate/'+d.id).raw({...rest,preds:{},calcolata:false,...(ts?{deadlineTs:ts}:{})})}}catch(e){}
+  ui.confirmSeason=false;ui.g=null;toast('Stagione chiusa: la trovi nell\'albo d\'oro. Si riparte da zero!');render()}
+
 /* ---------- condividi su WhatsApp: classifica e invito alla lega ---------- */
 const APP_URL='https://fanta-bet-serie-a.web.app';
 let curLeague={id:'',nome:''};
@@ -270,7 +341,7 @@ function shareText(kind){
   const {rows,nums}=standings();
   return`🏆 Fanta Bet · ${curLeague.nome}\nClassifica dopo ${nums.length} giornat${nums.length===1?'a':'e'}:\n`+rows.map(r=>`${r.rank}. ${pname(r.pid)} ${fmtN(r.tot)}`).join('\n')+`\n\n${APP_URL}`}
 function shareWA(text){window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank','noopener')}
-function viewStandings(){return viewStandingsMain()+shareCard()}
+function viewStandings(){return viewStandingsMain()+(dbState==='loading'?'':viewAlbo())+shareCard()}
 function viewStandingsMain(){
   if(dbState==='loading')return`<div class="sheet empty">Carico la classifica…</div>`;
   const {rows,nums,golden}=standings();
@@ -293,6 +364,7 @@ function viewStandingsMain(){
     h+=`<section class="sheet"><h3>Punti per giornata</h3><div class="scroll"><table><thead><tr><th class="l">Giornata</th>${PIDS.map(p=>`<th>${esc(pname(p))}</th>`).join('')}</tr></thead><tbody>`;
     [...nums].reverse().forEach(n=>{h+=`<tr><td class="l"><button class="btn small" data-act="open-round" data-n="${n}">G${n}</button></td>${PIDS.map(p=>{const s=rows.find(r=>r.pid===p).per[n];return`<td class="${s.total<0?'neg':''}">${s.state==='mancato'?'<span class="chip bad">−50</span>':fmtN(s.total)}${s.golden?' <span class="chip gold">10/10</span>':''}</td>`}).join('')}</tr>`});
     h+=`</tbody></table></div></section>`;
+    h+=viewTrend(rows,nums)+viewStats(rows,nums)+viewAwards(rows,nums);
     h+=viewX12Totals(rows,nums);
     h+=viewScorerTotals(rows,nums);
     h+=viewExactTotals(rows,nums);
@@ -466,6 +538,9 @@ document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.cl
 $('#view').addEventListener('click',async e=>{
   const b=e.target.closest('[data-act]');if(!b)return;if(b.disabled){log('disabled-click',{act:b.dataset.act});return}const a=b.dataset.act;const n=currentG();const r=rounds[n];
   if(a==='go-round'){ui.tab='giornata';saveUi();render();return}
+  if(a==='albo'){ui.albo=ui.albo===b.dataset.id?null:b.dataset.id;render();return}
+  if(a==='season-ask'||a==='season-no'){if(!me.owner)return;ui.confirmSeason=a==='season-ask';render();return}
+  if(a==='season-yes'){if(!me.owner)return;b.disabled=true;try{await closeSeason()}catch(err){toast(errMsg(err));ui.confirmSeason=false;render()}return}
   if(a==='share-standings'||a==='share-invite')return shareWA(shareText(a==='share-invite'?'invite':'standings'));
   if(a==='push-on'||a==='push-off'||a==='push-no'||a==='pref'||a==='acct-back'||a==='acct-logout')return accountAct(a,b);
   if(a==='chat-send')return sendChat();
@@ -699,6 +774,7 @@ function openLeague(id,L){
   db.doc('fantabet/rettifiche').onSnapshot(s=>{if(adjInflight)return;adj=Array.isArray(s.data()?.items)?JSON.parse(JSON.stringify(s.data().items)):[];requestRender()},()=>{});
   db.doc('fantabet/config').onSnapshot(s=>{if(cfgTimer||cfgInflight)return;const d=s.data()?JSON.parse(JSON.stringify(s.data())):null;
     me.owner=me.super||(!!d&&d.owner===me.id);if(d?.players){cfg=d;setPlayers()}watchSlips();requestRender()},()=>{});
+  db.collection('stagioni').onSnapshot(s=>{stagioni=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.chiusa||'').localeCompare(String(a.chiusa||'')));requestRender()},()=>{});
   db.collection('iscritti').onSnapshot(s=>{requests=s.docs.map(d=>d.id);requestRender()},()=>{});
   watchSlips();
   db.collection('registro').onSnapshot(s=>{const n={};s.docs.forEach(d=>{const x=d.data();n[d.id]=Array.isArray(x?.items)?JSON.parse(JSON.stringify(x.items)):[]});registro=n;requestRender()},()=>{});

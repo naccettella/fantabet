@@ -7,4 +7,4 @@ App Vite + Firebase (Firestore e login Google). Per installarla e pubblicarla se
 - `npm run import`: importa `dati/fantabet-export.json` (usa `-- --prova` per una prova a secco)
 - `npm run aggiorna`: aggiorna calendario, risultati e marcatori da ESPN (gratis, senza chiave)
 - `npm run prova-notifica -- <uid>`: manda una notifica di prova ai dispositivi di quell'account
-- `npm run backup`: copia di tutto l'archivio in un file JSON (in automatico ogni lunedì con GitHub Actions, se il repository è privato); `node scripts/ripristina-backup.mjs <file>` per ripristinarlo
+- `npm run backup`: copia di tutto l'archivio in un file JSON (cifrato; in automatico ogni lunedì con GitHub Actions); `node scripts/ripristina-backup.mjs <file>` per ripristinarlo
