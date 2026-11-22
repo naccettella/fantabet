@@ -260,7 +260,18 @@ function render(){
 }
 let lastHtml='';
 
-function viewStandings(){
+/* ---------- condividi su WhatsApp: classifica e invito alla lega ---------- */
+const APP_URL='https://fanta-bet-serie-a.web.app';
+let curLeague={id:'',nome:''};
+function shareCard(){if(!curLeague.id)return'';
+  return`<section class="sheet"><h2>Condividi</h2><div class="small muted">Si apre WhatsApp con il messaggio già scritto: scegli tu a chi mandarlo.</div><div class="row"><button class="btn primary" data-act="share-standings">Condividi la classifica</button><button class="btn" data-act="share-invite">Invita amici nella lega</button></div></section>`}
+function shareText(kind){
+  if(kind==='invite')return`Ti invito nella mia lega «${curLeague.nome}» su Fanta Bet Serie A! ⚽\nApri ${APP_URL}/?lega=${encodeURIComponent(curLeague.id)} , accedi con Google e scrivi la password della lega (te la do io).`;
+  const {rows,nums}=standings();
+  return`🏆 Fanta Bet · ${curLeague.nome}\nClassifica dopo ${nums.length} giornat${nums.length===1?'a':'e'}:\n`+rows.map(r=>`${r.rank}. ${pname(r.pid)} ${fmtN(r.tot)}`).join('\n')+`\n\n${APP_URL}`}
+function shareWA(text){window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank','noopener')}
+function viewStandings(){return viewStandingsMain()+shareCard()}
+function viewStandingsMain(){
   if(dbState==='loading')return`<div class="sheet empty">Carico la classifica…</div>`;
   const {rows,nums,golden}=standings();
   let h='';
@@ -455,6 +466,7 @@ document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.cl
 $('#view').addEventListener('click',async e=>{
   const b=e.target.closest('[data-act]');if(!b)return;if(b.disabled){log('disabled-click',{act:b.dataset.act});return}const a=b.dataset.act;const n=currentG();const r=rounds[n];
   if(a==='go-round'){ui.tab='giornata';saveUi();render();return}
+  if(a==='share-standings'||a==='share-invite')return shareWA(shareText(a==='share-invite'?'invite':'standings'));
   if(a==='push-on'||a==='push-off'||a==='push-no'||a==='pref'||a==='acct-back'||a==='acct-logout')return accountAct(a,b);
   if(a==='chat-send')return sendChat();
   if(a==='join'){if(!db||!me.id)return;try{await db.doc('schedine/'+me.id).set({at:new Date().toISOString()});requests=[...new Set([...requests,me.id])];toast('Richiesta inviata all\'organizzatore.')}catch(err){toast(err?.code==='invalid_argument'?'Non hai il permesso di partecipare: chiedi all\'organizzatore di invitarti come Editor.':errMsg(err))}render();return}
@@ -554,12 +566,13 @@ watchUser(async u=>{
   db.doc('utenti/'+u.uid).onSnapshot(s=>{acct=s.data()||{};if(ui.account)refreshAccount()},()=>{});myName=u.displayName||'Partecipante';
   await db.doc('utenti/'+u.uid).set({name:myName,at:new Date().toISOString()}).catch(()=>{});
   let lid=null;try{lid=localStorage.getItem('fb-lega')}catch(e){}
+  const inv=slug(new URLSearchParams(location.search).get('lega')||'');if(inv){lid=inv;invited=inv;try{history.replaceState(null,'',location.pathname)}catch(e){}}
   if(lid){try{setLeague(lid);const L=await db.doc('leghe/'+lid).get();const ok=L&&(me.super||L.owner===me.id||await db.doc('iscritti/'+me.id).get().then(x=>!!x).catch(()=>false));if(ok){openLeague(lid,L);return}}catch(e){}}
   setLeague(null);try{localStorage.removeItem('fb-lega')}catch(e){}
   leagueView();
 });
 /* ---------- scelta della lega ---------- */
-let myName='';
+let myName='',invited='';
 async function leagueView(msg){
   const v=$('#view');document.querySelector('.tabs').hidden=true;
   let mine={};try{mine=(await db.doc('utenti/'+me.id).get())?.leghe||{}}catch(e){}
@@ -572,6 +585,7 @@ async function leagueView(msg){
   ${msg?`<div class="small neg">${esc(msg)}</div>`:''}`;
   v.querySelectorAll('[data-lega]').forEach(b=>b.onclick=async()=>{setLeague(b.dataset.lega);const L=await db.doc('leghe/'+b.dataset.lega).get().catch(()=>null);if(!L)return leagueView('Questa lega non esiste più.');openLeague(b.dataset.lega,L)});
   if(me.super)$('#sa-go').onclick=()=>superView();
+  if(invited){const id=invited;invited='';db.doc('leghe/'+id).get().then(L=>{if(!L)return;const n=$('#j-nome');if(n&&!n.value){n.value=L.nome||id;$('#j-pw')?.focus();$('#j-extra').innerHTML=`<div class="small" style="margin-top:6px">Sei stato invitato nella lega <b>${esc(L.nome||id)}</b>: scrivi la password che ti hanno dato.</div>`}}).catch(()=>{})}
   $('#j-go').onclick=()=>joinLeague($('#j-nome').value,$('#j-pw').value).catch(e=>leagueView(e.msg||('Errore: '+(e?.code||e?.message||e))));
   $('#c-go').onclick=()=>createLeague($('#c-nome').value,$('#c-pw').value).catch(e=>leagueView(e.msg||('Errore: '+(e?.code||e?.message||e))));
 }
@@ -676,7 +690,7 @@ async function superView(){
   v.querySelectorAll('[data-sa-open]').forEach(b=>b.onclick=()=>{const x=info.find(i=>i.id===b.dataset.saOpen);if(x)openLeague(x.id,x.L)});
 }
 function openLeague(id,L){
-  inLeague=true;ui.account=false;setLeague(id);try{localStorage.setItem('fb-lega',id)}catch(e){}
+  curLeague={id,nome:L.nome||id};inLeague=true;ui.account=false;setLeague(id);try{localStorage.setItem('fb-lega',id)}catch(e){}
   document.querySelector('.tabs').hidden=false;
   const ln=document.getElementById('lega-nome');if(ln){ln.textContent=(L.nome||id)+(me.super&&L.owner!==me.id?' (super admin)':'');ln.parentElement.hidden=false}
   render();
