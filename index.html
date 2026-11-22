@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Fanta Bet Serie A</title>
+  <meta name="theme-color" content="#1d5a38">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Fanta Bet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="row spread" style="align-items:flex-start">
+      <div class="brand">Fanta Bet <span>Serie A</span></div>
+      <button id="logout" class="btn small" hidden style="background:transparent;color:var(--pitch-ink);border-color:rgb(255 255 255/.4)">Esci</button>
+    </div>
+    <div class="tag"><span id="ver">v33</span> · <span id="tagline">pronto</span><span hidden> · Lega <b id="lega-nome"></b> <button id="cambia-lega" class="btn small" style="padding:2px 8px;background:transparent;color:var(--pitch-ink);border-color:rgb(255 255 255/.4)">cambia</button></span></div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="classifica" id="t-classifica">Classifica</button>
+      <button role="tab" data-tab="giornata" id="t-giornata">Giornata</button>
+      <button role="tab" data-tab="chat" id="t-chat">Chat</button>
+      <button role="tab" data-tab="regole" id="t-regole">Regole</button>
+    </nav>
+  </div>
+</header>
+<main class="wrap" id="view"></main>
+<div id="toast" hidden></div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

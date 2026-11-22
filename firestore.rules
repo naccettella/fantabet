@@ -1,0 +1,139 @@
+rules_version = '2';
+
+// Regole di sicurezza di Fanta Bet Serie A (con le leghe).
+// - Ogni lega vive in leghe/{lega}/...; l'organizzatore è leghe/{lega}.owner e lì può tutto.
+// - Si entra in una lega solo conoscendo la password: l'iscrizione scrive l'impronta (SHA-256)
+//   della password e la regola controlla che esista leghe/{lega}/chiavi/{impronta}, che nessuno può leggere.
+// - Ogni giocatore scrive solo la PROPRIA schedina: leghe/{lega}/schedine/{suoUid}/giornate/{gNN}.
+// - La scadenza è controllata con l'ora del server (request.time).
+// - Dopo la consegna la schedina è bloccata; l'ora di consegna la mette il server.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+
+    // Calendario e risultati di Serie A: li scrive solo lo script di aggiornamento.
+    match /serieA/{g} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Profilo minimo: nome e leghe di cui si fa parte.
+    match /utenti/{u} {
+      allow read: if signedIn();
+      allow write: if signedIn() && uid() == u
+        && request.resource.data.keys().hasOnly(['name', 'at', 'leghe'])
+        && request.resource.data.get('name', '') is string && request.resource.data.get('name', '').size() <= 80;
+    }
+
+    match /leghe/{lega} {
+      function L() { return get(/databases/$(database)/documents/leghe/$(lega)).data; }
+      function isOwner() { return signedIn() && L().owner == uid(); }
+      function isIn() { return signedIn() && (isOwner() || exists(/databases/$(database)/documents/leghe/$(lega)/iscritti/$(uid()))); }
+      function cfg() { return get(/databases/$(database)/documents/leghe/$(lega)/fantabet/config).data; }
+      function isMember(u) { return 'members' in cfg() && u in cfg().members.values(); }
+
+      // il documento della lega (nome, organizzatore): si legge per poterci entrare
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.owner == uid()
+        && request.resource.data.keys().hasOnly(['nome', 'owner', 'creata'])
+        && request.resource.data.nome is string && request.resource.data.nome.size() <= 60;
+      allow update, delete: if isOwner();
+
+      // impronte delle password: nessuno le legge
+      match /chiavi/{h} {
+        allow read: if false;
+        allow write: if isOwner();
+      }
+
+      // iscritti: ci si iscrive solo con l'impronta giusta della password
+      match /iscritti/{u} {
+        allow read: if isOwner() || (signedIn() && uid() == u);
+        allow create, update: if isOwner() || (signedIn() && uid() == u
+          && request.resource.data.keys().hasOnly(['pw', 'name', 'at'])
+          && request.resource.data.pw is string
+          && exists(/databases/$(database)/documents/leghe/$(lega)/chiavi/$(request.resource.data.pw)));
+        allow delete: if isOwner();
+      }
+
+      // configurazione: l'organizzatore può tutto; un iscritto può solo aggiungere SE STESSO come giocatore
+      // (nuovo giocatore, oppure un giocatore esistente non ancora collegato a nessun account)
+      match /fantabet/config {
+        function selfJoin() {
+          let oldM = resource.data.get('members', {});
+          let newM = request.resource.data.get('members', {});
+          let oldP = resource.data.get('players', {});
+          let newP = request.resource.data.get('players', {});
+          let added = newM.diff(oldM).addedKeys();
+          // un solo giocatore aggiunto, nessun altro toccato: dato che prima l'uid non c'era e
+          // adesso c'è, la chiave aggiunta è per forza la sua
+          return isIn()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'members'])
+            && newM.diff(oldM).affectedKeys() == added && added.size() == 1
+            && uid() in newM.values() && !(uid() in oldM.values())
+            && ((newP.diff(oldP).affectedKeys().size() == 0 && added.difference(oldP.keys().toSet()).size() == 0)
+                || (newP.diff(oldP).affectedKeys() == added && newP.diff(oldP).addedKeys() == added
+                    && newP.size() <= 30));
+        }
+        allow read: if isIn();
+        allow create: if isOwner();
+        allow update: if isOwner() || selfJoin();
+        allow delete: if isOwner();
+      }
+      match /fantabet/{id} {
+        allow read: if isIn();
+        allow write: if isOwner();
+      }
+      match /giornate/{g} {
+        allow read: if isIn();
+        allow write: if isOwner();
+      }
+      match /registro/{id} {
+        allow read: if isIn();
+        allow write: if isOwner();
+      }
+      match /chat/{u} {
+        allow read: if isIn();
+        allow write: if isOwner() || (signedIn() && uid() == u && isIn() && isMember(u)
+          && request.resource.data.keys().hasOnly(['items'])
+          && request.resource.data.items is list && request.resource.data.items.size() <= 100);
+      }
+      // schedine/{uid}: vecchia richiesta di partecipazione ("Chiedi di partecipare")
+      match /schedine/{u} {
+        allow read: if isIn();
+        allow create, update: if isOwner() || (signedIn() && uid() == u && isIn() && request.resource.data.keys().hasOnly(['at']));
+        allow delete: if isOwner();
+
+        match /giornate/{g} {
+          function round() { return get(/databases/$(database)/documents/leghe/$(lega)/giornate/$(g)).data; }
+          function roundOpen() {
+            return exists(/databases/$(database)/documents/leghe/$(lega)/giornate/$(g))
+              && round().get('calcolata', false) != true
+              && (!('deadlineTs' in round()) || request.time < round().deadlineTs);
+          }
+          function notDelivered() { return resource == null || resource.data.get('status', '') != 'consegnato'; }
+          function validSlip() {
+            let d = request.resource.data;
+            return d.keys().hasOnly(['num', 'status', 'x12', 'exact', 'scorers', 'consegnata', 'consegnataTs'])
+              && d.num is int
+              && g == 'g' + (d.num < 10 ? '0' : '') + string(d.num)
+              && d.get('status', '') in ['', 'consegnato']
+              && (d.get('status', '') != 'consegnato' || d.consegnataTs == request.time)
+              && d.get('x12', []) is list && d.get('x12', []).size() <= 10
+              && d.get('exact', []) is list && d.get('exact', []).size() <= 3
+              && d.get('scorers', []) is list && d.get('scorers', []).size() <= 3;
+          }
+          allow read: if isIn();
+          allow create, update: if isOwner()
+            || (signedIn() && uid() == u && isMember(u) && roundOpen() && notDelivered() && validSlip());
+          allow delete: if isOwner();
+        }
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+service-account.json
+*.local
+.firebase
+dati
+scripts/mappa-utenti.json
