@@ -14,8 +14,9 @@ function log(){}
 const saveFail={};
 let cfg={players:{p1:'Giocatore 1',p2:'Giocatore 2',p3:'Giocatore 3'}};
 let rounds={};
-let ui={tab:'giornata',g:null,sub:'pronostici',player:'p1',editTeams:false,importing:false,confirmReopen:false};
+let ui={tab:'home',page:null,g:null,sub:'pronostici',player:'p1',editTeams:false,importing:false,confirmReopen:false};
 try{const s=JSON.parse(localStorage.getItem('fb-ui2')||'{}');['tab','g','sub','player'].forEach(k=>{if(s[k]!=null)ui[k]=s[k]})}catch(e){}
+if(!['home','giornata','classifica','chat','altro'].includes(ui.tab))ui.tab=ui.tab==='regole'?'altro':'home';
 function saveUi(){try{localStorage.setItem('fb-ui2',JSON.stringify({tab:ui.tab,g:ui.g,sub:ui.sub,player:ui.player}))}catch(e){}}
 
 const $=s=>document.querySelector(s);
@@ -254,7 +255,7 @@ function render(){
   if(!live())return;armDeadline();
   document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',!ui.account&&b.dataset.tab===ui.tab));
   const v=$('#view');
-  const html=ui.account?viewAccount():ui.tab==='classifica'?viewStandings():ui.tab==='giornata'?viewRound():ui.tab==='chat'?viewChat():viewRules();
+  const html=ui.account?viewAccount():ui.page?viewPage():ui.tab==='home'?viewHome():ui.tab==='classifica'?viewStandings():ui.tab==='giornata'?viewRound():ui.tab==='chat'?viewChat():viewAltro();
   if(html===lastHtml&&v.firstChild)return;
   lastHtml=html;v.innerHTML=html;
 }
@@ -341,7 +342,7 @@ function shareText(kind){
   const {rows,nums}=standings();
   return`🏆 Fanta Bet · ${curLeague.nome}\nClassifica dopo ${nums.length} giornat${nums.length===1?'a':'e'}:\n`+rows.map(r=>`${r.rank}. ${pname(r.pid)} ${fmtN(r.tot)}`).join('\n')+`\n\n${APP_URL}`}
 function shareWA(text){window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank','noopener')}
-function viewStandings(){return viewStandingsMain()+(dbState==='loading'?'':viewAlbo())+shareCard()}
+function viewStandings(){return viewStandingsMain()+(dbState==='loading'?'':standingsLinks())+shareCard()}
 function viewStandingsMain(){
   if(dbState==='loading')return`<div class="sheet empty">Carico la classifica…</div>`;
   const {rows,nums,golden}=standings();
@@ -364,17 +365,17 @@ function viewStandingsMain(){
     h+=`<section class="sheet"><h3>Punti per giornata</h3><div class="scroll"><table><thead><tr><th class="l">Giornata</th>${PIDS.map(p=>`<th>${esc(pname(p))}</th>`).join('')}</tr></thead><tbody>`;
     [...nums].reverse().forEach(n=>{h+=`<tr><td class="l"><button class="btn small" data-act="open-round" data-n="${n}">G${n}</button></td>${PIDS.map(p=>{const s=rows.find(r=>r.pid===p).per[n];return`<td class="${s.total<0?'neg':''}">${s.state==='mancato'?'<span class="chip bad">−50</span>':fmtN(s.total)}${s.golden?' <span class="chip gold">10/10</span>':''}</td>`}).join('')}</tr>`});
     h+=`</tbody></table></div></section>`;
-    h+=viewTrend(rows,nums)+viewStats(rows,nums)+viewAwards(rows,nums);
-    h+=viewX12Totals(rows,nums);
-    h+=viewScorerTotals(rows,nums);
-    h+=viewExactTotals(rows,nums);
+    h+=viewTrend(rows,nums);
   }
-  if(!me.owner)return h+(me.id&&!myPid()?joinCard():'')+viewLog();
-  h+=`<section class="sheet"><h3>Punti manuali</h3><div class="small muted">Aggiungi o togli punti a un giocatore (bonus, penalità, correzioni). Contano nel totale ma non nel record di giornata né nei punti 1X2.</div>
+  if(!me.owner&&me.id&&!myPid())h+=joinCard();
+  return h}
+/* organizzatore: punti manuali e giocatori (pagina "Strumenti organizzatore" in Altro) */
+function viewOwnerTools(){if(!me.owner)return`<section class="sheet small muted">Solo l'organizzatore vede questa pagina.</section>`;
+  let h=`<section class="sheet"><h3>Punti manuali</h3><div class="small muted">Aggiungi o togli punti a un giocatore (bonus, penalità, correzioni). Contano nel totale ma non nel record di giornata né nei punti 1X2.</div>
     <div class="row"><select id="adj-p" aria-label="Giocatore">${PIDS.map(p=>`<option value="${p}">${esc(pname(p))}</option>`).join('')}</select><input type="number" id="adj-pts" step="0.5" placeholder="±pt" aria-label="Punti (negativi per togliere)" style="width:5.5em"><input type="text" id="adj-why" placeholder="Motivo" aria-label="Motivo" style="flex:1 1 140px"><button class="btn primary" data-act="add-adj">Aggiungi</button></div>`;
   if(adj.length){h+=`<div class="scroll"><table><tbody>${adj.map((a,i)=>`<tr><td class="l"><b>${esc(pname(a.pid))}</b><div class="small muted">${esc(a.why||'Senza motivo')} · ${esc(fmtDeadline(a.at))}</div></td><td class="pts ${a.pts<0?'neg':'pos'}">${fmt(+a.pts)}</td><td>${ui.confirmDelAdj===i?`<button class="btn danger" data-act="del-adj" data-i="${i}">Elimina</button> <button class="btn" data-act="del-adj-no">No</button>`:`<button class="btn danger" data-act="ask-del-adj" data-i="${i}" aria-label="Elimina">✕</button>`}</td></tr>`).join('')}</tbody></table></div>`}
   h+=`</section>`;
-  h+=viewPlayers()+viewLog();
+  h+=viewPlayers();
   return h}
 /* 1X2 outcomes each player got right over the calculated rounds, with their best single round */
 function viewX12Totals(rows,nums){
@@ -421,7 +422,6 @@ function viewRound(){
   const n=currentG();const r=rounds[n];
   let h=`<div class="rhead"><button class="arrow" data-act="prev" aria-label="Giornata precedente" ${n<=1?'disabled':''}>‹</button><div class="gnum">Giornata ${n}</div><button class="arrow" data-act="next" aria-label="Giornata successiva" ${n>=38?'disabled':''}>›</button>
     ${r?(r.calcolata?'<span class="chip ok">Calcolata</span>':(pastDl(r)?'<span class="chip">Chiusa</span>':'<span class="chip">Aperta</span>')):''}</div>`;
-  if(pushSt==='off'&&!pushNo())h+=`<section class="sheet"><div class="row spread"><div><b>Vuoi le notifiche?</b><div class="small muted">Giornata aperta, promemoria prima della scadenza, 1X2, risultati esatti e marcatori presi.</div></div><div class="row"><button class="btn primary" data-act="push-on">Attiva</button><button class="btn" data-act="push-no">No grazie</button></div></div></section>`;
   if(!r){return h+`<section class="sheet empty"><div>La giornata ${n} non è ancora stata creata.</div>${me.owner?`<div class="small">L'aggiornamento automatico crea da solo la prossima giornata con il calendario ufficiale. Se vuoi, creala vuota e scrivi le partite a mano.</div><div class="row" style="justify-content:center"><button class="btn" data-act="create">Crea vuota</button></div>`:'<div class="small">La crea l\'organizzatore (o l\'aggiornamento automatico): appena è pronta compare qui.</div>'}${autoMsg(n)}</section>`}
   if(r.deadline){const past=new Date(r.deadline)<new Date();h+=`<div class="small ${past?'muted':''}">Consegna pronostici entro <b>${esc(fmtDeadline(r.deadline))}</b>${past?' · chiusa':''}</div>`}
   if(ui.sub!=='pronostici')h+=autoBar(n,r);
@@ -525,6 +525,62 @@ function viewScores(r,n){
   h+=`</section>`;
   return h}
 
+/* ---------- v2.1: Home, Altro e pagine con "Indietro" ---------- */
+const notifCard=()=>pushSt==='off'&&!pushNo()?`<section class="sheet"><div class="row spread"><div><b>Vuoi le notifiche?</b><div class="small muted">Giornata aperta, promemoria prima della scadenza, 1X2, risultati esatti e marcatori presi.</div></div><div class="row"><button class="btn primary" data-act="push-on">Attiva</button><button class="btn" data-act="push-no">No grazie</button></div></div></section>`:'';
+function countdown(iso){const ms=new Date(iso)-Date.now();if(!(ms>0))return'';const m=Math.floor(ms/60000),d=Math.floor(m/1440),h=Math.floor(m%1440/60);return d?`${d}g ${h}h`:h?`${h}h ${m%60}m`:`${m%60} min`}
+function miniTable(rows,nums){const mine=myPid();const last=nums[nums.length-1];
+  return`<table class="mini">${rows.map(r=>{const l=last?r.per[last]?.total??0:0;return`<tr class="${r.rank===1?'first':''} ${r.pid===mine?'me':''}"><td style="width:34px"><span class="pos-n">${r.rank}</span></td><td>${esc(pname(r.pid))}${r.tot<rows[0].tot?`<div class="small muted">−${fmtN(r1(rows[0].tot-r.tot))}</div>`:''}</td><td class="r small ${l<0?'neg':'muted'}">${nums.length?fmt(l):''}</td><td class="r pts">${fmtN(r.tot)}</td></tr>`}).join('')}</table>`}
+function mySlipPeek(){const mine=myPid();if(!mine)return'';
+  const nums=Object.keys(rounds).map(Number).sort((a,b)=>a-b).filter(n=>rounds[n].matches?.some(m=>validMatch(m))&&getPred(rounds[n],mine).status==='consegnato');
+  const n=nums[nums.length-1];if(!n)return'';const r=rounds[n];if(!canSee(r,mine))return'';const p=getPred(r,mine);
+  let hit=0,val=0;const rowsH=r.matches.map((m,i)=>{const v=validMatch(m)&&!m.nullo;const out=v?outcome(m):null;const pk=p.x12[i]||'';if(v&&pk){val++;if(pk===out)hit++}
+    return`<div class="m"><span class="t">${esc(m.home)} – ${esc(m.away)}</span><span class="pk ${v&&pk?(pk===out?'right':'wrong'):''}">${esc(pk)||'·'}</span><span class="res">${m.nullo?'—':v?`${m.hg}-${m.ag}`:'·'}</span></div>`}).join('');
+  return`<section class="sheet"><div class="row spread"><h3>La tua schedina · G${n}</h3><span class="chip ${hit?'ok':''}">${hit} su ${val} presi</span></div><div class="myslip">${rowsH}</div><button class="btn small" data-act="open-round" data-n="${n}" style="align-self:flex-start">Apri la giornata ${n}</button></section>`}
+function chatPeek(){const msgs=Object.entries(chat).flatMap(([u,items])=>(items||[]).map(m=>({...m,u}))).sort((a,b)=>a.at<b.at?-1:1).slice(-3);
+  return`<section class="sheet"><div class="row spread"><h3>Chat</h3><button class="btn small" data-act="tab" data-k="chat">Apri la chat</button></div>${msgs.length?`<div class="chatpeek">${msgs.map(m=>`<div><b>${esc(author(m.u))}</b> ${esc(m.text)}</div>`).join('')}</div>`:'<div class="small muted">Ancora nessun messaggio.</div>'}</section>`}
+function viewHome(){
+  if(dbState==='loading')return`<div class="sheet empty">Carico…</div>`;
+  const {rows,nums}=standings();const mine=myPid();const me1=rows.find(r=>r.pid===mine);
+  const g=currentG();const r=rounds[g];
+  let h=`<h2 class="hello">Ciao ${esc(mine?pname(mine):(myName||''))}</h2>`;
+  let w1=me1?`<div class="widget"><div class="k">Sei</div><div class="v">${me1.rank}°</div><div class="s">${fmtN(me1.tot)} punti · ${me1.rank===1?(rows[1]?`+${fmtN(r1(me1.tot-rows[1].tot))} sul 2°`:'in testa'):`−${fmtN(r1(rows[0].tot-me1.tot))} dal 1°`}</div></div>`:`<div class="widget"><div class="k">Classifica</div><div class="v">${nums.length}</div><div class="s">giornate calcolate</div></div>`;
+  const cd=r&&r.deadline&&!pastDl(r)?countdown(r.deadline):'';
+  let w2=`<div class="widget orange"><div class="k">Giornata ${g}</div><div class="v">${cd||(r?(r.calcolata?'✓':'In corso'):'—')}</div><div class="s">${cd?'alla scadenza':r?(r.calcolata?'calcolata':'risultati in arrivo'):'non ancora creata'}</div></div>`;
+  h+=`<div class="widgets">${w1}${w2}</div>`;
+  const todo=r&&mine&&!pastDl(r)&&getPred(r,mine).status!=='consegnato';
+  h+=`<button class="btn primary cta" data-act="go-round">${todo?'Compila la schedina':`Vai alla giornata ${g}`}</button>`;
+  h+=notifCard();
+  if(rows.length)h+=`<section class="sheet"><div class="row spread"><h3>Classifica</h3><span class="chip">${nums.length} / 38</span></div>${miniTable(rows,nums)}</section>`;
+  h+=mySlipPeek();
+  if(mine||me.owner)h+=chatPeek();
+  else if(me.id)h+=joinCard();
+  return h}
+const PAGES={
+  stats:['Statistiche',()=>{const{rows,nums}=standings();return nums.length?viewStats(rows,nums):''}],
+  premi:['Premi e medaglie',()=>{const{rows,nums}=standings();return nums.length?viewAwards(rows,nums):''}],
+  x12:['Classifica 1X2',()=>{const{rows,nums}=standings();return nums.length?viewX12Totals(rows,nums):''}],
+  marcatori:['Marcatori totali',()=>{const{rows,nums}=standings();return nums.length?viewScorerTotals(rows,nums):''}],
+  esatti:['Risultati esatti totali',()=>{const{rows,nums}=standings();return nums.length?viewExactTotals(rows,nums):''}],
+  albo:["Albo d'oro",()=>viewAlbo()],
+  registro:["Registro",()=>viewLog()],
+  regole:['Regole',()=>viewRules()],
+  admin:['Strumenti organizzatore',()=>viewOwnerTools()],
+};
+function viewPage(){const P=PAGES[ui.page];if(!P){ui.page=null;return viewHome()}
+  const body=dbState==='loading'&&ui.page!=='regole'?`<div class="sheet empty">Carico…</div>`:(P[1]()||`<section class="sheet small muted">Ancora niente da mostrare: serve almeno una giornata calcolata.</section>`);
+  return`<div class="pagehead"><button class="back" data-act="back">‹ Indietro</button><h2>${esc(P[0])}</h2></div>${body}`}
+const goRow=(act,k,ic,col,t,sub,extra)=>`<button data-act="${act}"${k?` data-k="${k}"`:''}><span class="ic" style="background:${col}">${ic}</span><span class="tx">${t}${sub?`<small>${sub}</small>`:''}</span>${extra||''}<span class="go">›</span></button>`;
+function standingsLinks(){const {nums}=standings();let h='';
+  if(nums.length)h+=`<div class="golist">${goRow('page','stats','📊','#5856d6','Statistiche')}${goRow('page','premi','🏅','#ff9500','Premi e medaglie')}${goRow('page','x12','1X2','#30b0c7','Classifica 1X2')}${goRow('page','marcatori','👟','#af52de','Marcatori totali')}${goRow('page','esatti','🎯','#ff2d55','Risultati esatti totali')}</div>`;
+  h+=`<div class="golist">${goRow('page','albo','🏆','#b8860b',"Albo d'oro")}${me.owner||myPid()?goRow('page','registro','📝','#8e8e93',"Registro dell'organizzatore"):''}</div>`;
+  return h}
+function viewAltro(){
+  let h=`<h2 class="hello">Altro</h2>`;
+  h+=`<div class="golist">${goRow('page','regole','ℹ','#007aff','Regole')}${goRow('open-account','','👤','#8e8e93','Account e notifiche')}</div>`;
+  h+=`<div class="golist">${curLeague.id?goRow('share-invite','','↗','#25d366','Invita amici nella lega','si apre WhatsApp'):''}${goRow('change-league','','⇄','#ff9500','Cambia lega',curLeague.nome?'ora: '+esc(curLeague.nome):'')}${me.owner?goRow('page','admin','⚙','#5856d6','Strumenti organizzatore','punti manuali e giocatori'):''}</div>`;
+  h+=`<div class="golist"><button class="out" data-act="acct-logout">Esci</button></div><div class="foot">Fanta Bet v2.1</div>`;
+  return h}
+
 function viewRules(){
   const t=(rows,head)=>`<div class="scroll"><table class="rules"><thead><tr><th class="l">${head[0]}</th><th>${head[1]}</th></tr></thead><tbody>${rows.map(([a,b])=>`<tr><td class="l">${a}</td><td>${b}</td></tr>`).join('')}</tbody></table></div>`;
   return`<section class="sheet"><h2>Consegna</h2><div>Pronostici entro 1 minuto prima del fischio d'inizio del primo anticipo. Chi non consegna prende −50. Partite rinviate: se il recupero è prima del turno successivo si aspetta, altrimenti 1X2, risultato e marcatori su quella partita sono nulli. Chi non gioca (0 minuti) prende 0.</div></section>
@@ -534,10 +590,15 @@ function viewRules(){
   <section class="sheet"><h2>Spareggi a fine anno</h2><div>Record di giornata, poi punti della sola colonna 1X2, poi risultati esatti presi, poi sorteggio o partita secca.</div></section>`}
 
 /* ---------- events ---------- */
-document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;ui.account=false;ui.tab=b.dataset.tab;saveUi();render();const v=$('#view');v.classList.remove('enter');void v.offsetWidth;v.classList.add('enter')});
+document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;ui.account=false;ui.page=null;ui.tab=b.dataset.tab;saveUi();render();window.scrollTo(0,0);const v=$('#view');v.classList.remove('enter');void v.offsetWidth;v.classList.add('enter')});
 $('#view').addEventListener('click',async e=>{
   const b=e.target.closest('[data-act]');if(!b)return;if(b.disabled){log('disabled-click',{act:b.dataset.act});return}const a=b.dataset.act;const n=currentG();const r=rounds[n];
-  if(a==='go-round'){ui.tab='giornata';saveUi();render();return}
+  if(a==='go-round'){ui.tab='giornata';ui.page=null;saveUi();render();window.scrollTo(0,0);return}
+  if(a==='page'){ui.page=b.dataset.k;render();window.scrollTo(0,0);return}
+  if(a==='back'){ui.page=null;render();window.scrollTo(0,0);return}
+  if(a==='tab'){ui.tab=b.dataset.k;ui.page=null;saveUi();render();window.scrollTo(0,0);return}
+  if(a==='open-account'){openAccount();window.scrollTo(0,0);return}
+  if(a==='change-league'){try{localStorage.removeItem('fb-lega')}catch(e){}location.reload();return}
   if(a==='albo'){ui.albo=ui.albo===b.dataset.id?null:b.dataset.id;render();return}
   if(a==='season-ask'||a==='season-no'){if(!me.owner)return;ui.confirmSeason=a==='season-ask';render();return}
   if(a==='season-yes'){if(!me.owner)return;b.disabled=true;try{await closeSeason()}catch(err){toast(errMsg(err));ui.confirmSeason=false;render()}return}
@@ -550,7 +611,7 @@ $('#view').addEventListener('click',async e=>{
   if(a==='ask-add-player'){ui.confirmAdd=true;render();return}
   if(a==='add-player-no'){ui.confirmAdd=false;render();return}
   if(a==='add-player'){ui.confirmAdd=false;const p=addPlayer();addLog(null,{pid:p,t:'Giocatore aggiunto',det:[]});render();const el=$('#name-'+p);el&&(el.focus(),el.select());return}
-  if(a==='open-round'){ui.tab='giornata';ui.g=+b.dataset.n;ui.sub='punteggi';saveUi();render();return}
+  if(a==='open-round'){ui.tab='giornata';ui.page=null;ui.g=+b.dataset.n;ui.sub='punteggi';saveUi();render();return}
   if(a==='prev'||a==='next'){ui.g=Math.min(38,Math.max(1,n+(a==='next'?1:-1)));ui.editTeams=false;ui.confirmReopen=false;saveUi();render();return}
   if(a==='create'){rounds[n]=emptyRound(n);ui.editTeams=true;ui.sub='partite';saveRound(n,'*',true);render();return}
   if(a==='sub'){ui.sub=b.dataset.k;ui.confirmReopen=false;saveUi();render();return}
@@ -636,7 +697,7 @@ watchUser(async u=>{
   if(!u){if(started){location.reload();return}loginView();return}
   if(started)return;started=true;
   user=u;me={id:u.uid,owner:false,super:u.uid===SUPER_UID};db=fdb;
-  const ab=document.getElementById('account-btn');if(ab){ab.hidden=false;ab.onclick=()=>openAccount()}
+  const ab=document.getElementById('account-btn');if(ab){ab.hidden=false;ab.textContent=(u.displayName||'?').trim().charAt(0).toUpperCase()||'?';ab.onclick=()=>openAccount()}
   pushStatus().then(st=>{pushSt=st;requestRender()}).catch(()=>{});
   db.doc('utenti/'+u.uid).onSnapshot(s=>{acct=s.data()||{};if(ui.account)refreshAccount()},()=>{});myName=u.displayName||'Partecipante';
   await db.doc('utenti/'+u.uid).set({name:myName,at:new Date().toISOString()}).catch(()=>{});
