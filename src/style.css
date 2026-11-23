@@ -39,11 +39,12 @@ body::before{content:"";position:absolute;inset:0 0 auto;height:340px;background
 .tag{font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.02em;min-width:0}
 .tag b{color:var(--ink)}
 /* bottom glass tab bar */
-.tabs{position:fixed;z-index:15;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(440px,calc(100% - 28px));height:64px;border-radius:99px;background:var(--glass);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);box-shadow:0 8px 30px rgb(0 0 0/.14),inset 0 0 0 .5px var(--glass-line);display:grid;grid-template-columns:repeat(4,1fr);padding:5px;box-sizing:border-box}
-.tabs .bubble{position:absolute;top:5px;bottom:5px;left:5px;width:calc((100% - 10px)/4);border-radius:99px;background:var(--soft);transform:translateX(calc(var(--t,0)*100%));transition:transform .55s var(--spring)}
+.tabs{position:fixed;z-index:15;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(440px,calc(100% - 28px));height:64px;border-radius:99px;background:var(--glass);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);box-shadow:0 8px 30px rgb(0 0 0/.14),inset 0 0 0 .5px var(--glass-line);display:grid;grid-template-columns:repeat(5,1fr);padding:5px;box-sizing:border-box}
+.tabs .bubble{position:absolute;top:5px;bottom:5px;left:5px;width:calc((100% - 10px)/5);border-radius:99px;background:var(--soft);transform:translateX(calc(var(--t,0)*100%));transition:transform .55s var(--spring)}
 .tabs:has(#t-giornata[aria-selected="true"]){--t:1}
-.tabs:has(#t-chat[aria-selected="true"]){--t:2}
-.tabs:has(#t-regole[aria-selected="true"]){--t:3}
+.tabs:has(#t-classifica[aria-selected="true"]){--t:2}
+.tabs:has(#t-chat[aria-selected="true"]){--t:3}
+.tabs:has(#t-altro[aria-selected="true"]){--t:4}
 .tabs:not(:has([aria-selected="true"])) .bubble{opacity:0}
 .tabs button{position:relative;z-index:1;border:0;background:transparent;font:600 10.5px var(--f-body);letter-spacing:0;color:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;border-radius:99px;transition:color .3s}
 .tabs button[aria-selected="true"]{color:var(--accent)}
@@ -178,3 +179,47 @@ label.row input[type=checkbox]{flex:none;margin-top:1px}
   .brand{font-size:32px}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+/* v2.1 riordino: Home, pagine con "Indietro", righe stile Impostazioni */
+.avatar{flex:none;width:34px;height:34px;border-radius:50%;border:0;cursor:pointer;background:linear-gradient(135deg,#34c759,#007aff);color:#fff;font:700 15px/34px var(--f-body);text-align:center;padding:0;box-shadow:0 4px 12px rgb(0 122 255/.25);transition:transform .25s var(--spring)}
+.avatar:active{transform:scale(.9)}
+.hello{font:800 30px/1.1 var(--f-disp);letter-spacing:-.035em;margin:0}
+.widgets{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.widget{border-radius:var(--r);padding:14px 16px;color:#fff;background:linear-gradient(135deg,#3fdc6d,#1f9e48);box-shadow:0 10px 24px rgb(34 169 77/.25);min-width:0}
+.widget.orange{background:linear-gradient(135deg,#ffb340,#ff6b00);box-shadow:0 10px 24px rgb(255 120 0/.22)}
+.widget .k{font:700 11.5px/1 var(--f-body);text-transform:uppercase;letter-spacing:.05em;opacity:.9}
+.widget .v{font:800 32px/1.1 var(--f-num);letter-spacing:-.02em;margin-top:6px}
+.widget .s{font-size:13px;opacity:.92}
+.btn.cta{display:block;width:100%;padding:14px;font-size:16px;font-weight:700}
+.golist{background:var(--paper);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column}
+.golist button{display:flex;align-items:center;gap:12px;width:100%;border:0;background:transparent;padding:12px 16px;text-align:left;font-size:16px;font-weight:500;cursor:pointer;color:var(--ink);transition:background-color .2s}
+.golist button+button{box-shadow:inset 0 .5px 0 var(--line)}
+.golist button:active{background:var(--soft)}
+.golist .ic{flex:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-size:15px;color:#fff;font-weight:700}
+.golist .tx{flex:1;min-width:0}
+.golist .tx small{display:block;color:var(--muted);font-size:12.5px;font-weight:400}
+.golist .go{color:var(--muted);font-size:20px;line-height:1}
+.golist .badge{background:var(--red);color:#fff;border-radius:99px;padding:1px 7px;font:700 12px var(--f-body)}
+.golist button.out{justify-content:center;color:var(--red);font-weight:600}
+.pagehead{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.back{border:0;background:none;color:var(--accent);font:500 16px var(--f-body);padding:4px 0;cursor:pointer}
+.mini{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.mini td{padding:9px 4px;border-bottom:.5px solid var(--line);text-align:left}
+.mini tr:last-child td{border-bottom:0}
+.mini .r{text-align:right}
+.mini .pts{font:800 18px var(--f-num)}
+.mini .pos-n{width:26px;height:26px;border-radius:50%;display:inline-grid;place-items:center;font:700 13px var(--f-body);background:var(--soft)}
+.mini tr.me td{font-weight:700}
+.mini tr.first .pos-n{background:linear-gradient(135deg,#ffd60a,#ff9f0a);color:#fff}
+.myslip{display:flex;flex-direction:column}
+.myslip .m{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:.5px solid var(--line);font-size:14px}
+.myslip .m:last-child{border-bottom:0}
+.myslip .t{flex:1;min-width:0;line-height:1.2}
+.myslip .pk{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font:700 14px var(--f-body);background:var(--soft)}
+.myslip .pk.right{background:var(--pitch);color:var(--pitch-ink)}
+.myslip .pk.wrong{background:var(--red);color:#fff}
+.myslip .res{width:34px;text-align:right;font:700 14px var(--f-num)}
+.chatpeek{display:flex;flex-direction:column;gap:4px;font-size:14px}
+.chatpeek div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.foot{text-align:center;color:var(--muted);font-size:13px}
+@media (max-width:360px){.widget .v{font-size:26px}.tabs button{font-size:9.5px}}
