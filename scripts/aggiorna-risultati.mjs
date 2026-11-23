@@ -259,6 +259,32 @@ for (const L of leagues) {
   }
 }
 
+/* ============ 2b. rose della Serie A (una volta al giorno): servono all'app per sapere
+   la squadra di ogni marcatore scelto, e quindi se la sua partita è già finita ============ */
+try {
+  const roseRef = fs.doc('sistema/rose');
+  const old = (await roseRef.get()).data() || {};
+  let rose = old.p || {}, roseAt = old.at || '';
+  if (!roseAt || now.getTime() - new Date(roseAt).getTime() > 20 * 3600e3) {
+    const BASE = ESPN.replace(/\/scoreboard$/, '');
+    const tj = await (await fetch(`${BASE}/teams`)).json(); calls++;
+    const teams = (tj.sports?.[0]?.leagues?.[0]?.teams || []).map(t => t.team).filter(Boolean);
+    const p = {};
+    for (const t of teams) {
+      calls++;
+      const res = await fetch(`${BASE}/teams/${t.id}/roster`); if (!res.ok) continue;
+      const rj = await res.json();
+      const list = (rj.athletes || []).flatMap(a => Array.isArray(a.items) ? a.items : [a]);
+      for (const a of list) { const n = a.displayName || a.fullName; if (n) p[n] = showName(t.displayName); }
+    }
+    if (Object.keys(p).length > 100) { rose = p; roseAt = now.toISOString(); await roseRef.set({ at: roseAt, p }); }
+  }
+  for (const L of leagues) {
+    const r = L.ref.collection('fantabet').doc('rose');
+    if (((await r.get()).data() || {}).at !== roseAt && roseAt) await r.set({ at: roseAt, p: rose });
+  }
+} catch (e) { console.log('rose non aggiornate: ' + (e?.message || e)); }
+
 /* ============ 3. notifiche sul telefono (mai bloccanti) ============ */
 let sentInfo = '';
 try { sentInfo = await notifica(fs, leagues, events, now); } catch (e) { sentInfo = 'notifiche non inviate: ' + (e?.message || e); }
