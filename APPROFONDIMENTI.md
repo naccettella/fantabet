@@ -30,7 +30,7 @@ Dopo una modifica ai file dell'app, ripubblica con `npm run deploy`. Se cambi `a
 
 ## Risultati automatici: cosa fa lo script
 
-Ogni 20 minuti, dalle 11 a mezzanotte circa:
+Ogni 20 minuti, dalle 14 a mezzanotte (ora italiana):
 - crea la giornata successiva con il calendario e la scadenza 1 minuto prima del primo calcio d'inizio;
 - inserisce i risultati al 90° e i marcatori (autogol esclusi);
 - conferma la giornata quando tutte le partite hanno un risultato o sono segnate come nulle;
