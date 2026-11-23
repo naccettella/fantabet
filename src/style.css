@@ -226,3 +226,6 @@ label.row input[type=checkbox]{flex:none;margin-top:1px}
 /* Home: i riquadri portano alla loro sezione */
 .tap{cursor:pointer;transition:transform .25s var(--spring)}
 .tap:active{transform:scale(.98)}
+/* schedina: bollino dei punti verde se preso, rosso se sbagliato */
+.chip.hit{background:var(--ok);color:#fff}
+.chip.miss{background:var(--red);color:#fff}
