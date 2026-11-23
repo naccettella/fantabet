@@ -116,6 +116,28 @@ if (process.argv[2] === 'promemoria') {
   process.exit(0);
 }
 
+// Prova a tutti:  node scripts/notifiche.mjs prova-tutti   -> notifica di prova a ogni dispositivo con le notifiche attive
+if (process.argv[2] === 'prova-tutti') {
+  const { readFileSync } = await import('node:fs');
+  const { initializeApp, cert } = await import('firebase-admin/app');
+  const { getFirestore } = await import('firebase-admin/firestore');
+  initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || readFileSync(new URL('../service-account.json', import.meta.url), 'utf8'))) });
+  const fs = getFirestore();
+  let users = 0, devices = 0, ok = 0, removed = 0; const errs = {};
+  for (const u of (await fs.collection('utenti').get()).docs) {
+    const toks = (await u.ref.collection('push').get()).docs; if (!toks.length) continue;
+    users++; devices += toks.length;
+    const res = await getMessaging().sendEach(toks.map(t => ({ token: t.data().token, data: { title: 'Fanta Bet', body: 'Notifica di prova: se la leggi, le notifiche funzionano! ✅', tag: 'prova', url: '/' }, webpush: { headers: { Urgency: 'high', TTL: '3600' } } })));
+    ok += res.successCount;
+    for (let i = 0; i < res.responses.length; i++) {
+      const c = res.responses[i].error?.code; if (!c) continue; errs[c] = (errs[c] || 0) + 1;
+      if (/registration-token-not-registered|invalid-registration-token/.test(c)) { await toks[i].ref.delete(); removed++; }
+    }
+  }
+  console.log(`PROVA: ${users} persone con notifiche attive, ${devices} dispositivi, inviate ${ok}${removed ? `, ${removed} dispositivi non più validi tolti` : ''}.`, Object.keys(errs).length ? 'Errori: ' + JSON.stringify(errs) : '');
+  process.exit(0);
+}
+
 // Prova a mano:  node scripts/notifiche.mjs prova <uid>   -> manda una notifica di prova a quell'account
 if (process.argv[2] === 'prova') {
   const { readFileSync } = await import('node:fs');
