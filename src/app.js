@@ -261,7 +261,7 @@ function render(){
 let lastHtml='';
 
 /* ---------- statistiche personali ---------- */
-const COLORS=['#1d5a38','#c0392b','#2e6fd8','#d4a017','#8e44ad','#16a085','#e67e22','#5d6d7e','#e84393','#00897b'];
+const COLORS=['#34c759','#ff3b30','#007aff','#ff9500','#af52de','#30b0c7','#ff2d55','#5856d6','#a2845e','#8e8e93'];
 function viewTrend(rows,nums){if(nums.length<2)return'';
   // posizione in classifica dopo ogni giornata (senza i punti manuali)
   const cum={};PIDS.forEach(p=>cum[p]=0);const pos={};PIDS.forEach(p=>pos[p]=[]);
@@ -534,7 +534,7 @@ function viewRules(){
   <section class="sheet"><h2>Spareggi a fine anno</h2><div>Record di giornata, poi punti della sola colonna 1X2, poi risultati esatti presi, poi sorteggio o partita secca.</div></section>`}
 
 /* ---------- events ---------- */
-document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;ui.account=false;ui.tab=b.dataset.tab;saveUi();render()});
+document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;ui.account=false;ui.tab=b.dataset.tab;saveUi();render();const v=$('#view');v.classList.remove('enter');void v.offsetWidth;v.classList.add('enter')});
 $('#view').addEventListener('click',async e=>{
   const b=e.target.closest('[data-act]');if(!b)return;if(b.disabled){log('disabled-click',{act:b.dataset.act});return}const a=b.dataset.act;const n=currentG();const r=rounds[n];
   if(a==='go-round'){ui.tab='giornata';saveUi();render();return}
@@ -565,7 +565,7 @@ $('#view').addEventListener('click',async e=>{
   if(a==='add-scorer'){r.scorers.push({name:'',team:'',goals:1});saveRound(n,'scorers');render();const el=$('#sn-'+(r.scorers.length-1));el&&el.focus();return}
   if(a==='del-scorer'){r.scorers.splice(+b.dataset.i,1);saveRound(n,'scorers');render();return}
   if(a==='status'){if(slipLocked(r,ui.player))return toast('Schedina bloccata: premi «Sblocca per modificare».');trackEdit(r,ui.player);const p=ensurePred(r,ui.player);p.status=b.dataset.k;markDelivered(r,p);savePred(n,ui.player);render();return}
-  if(a==='x12'){log('x12-handler',{n,has:!!r,player:ui.player});if(slipLocked(r,ui.player))return toast('Schedina non più modificabile.');trackEdit(r,ui.player);const p=ensurePred(r,ui.player);const i=+b.dataset.i;p.x12[i]=p.x12[i]===b.dataset.o?'':b.dataset.o;if(!p.status&&me.owner&&!memberOf(ui.player))p.status='consegnato';markDelivered(r,p);savePred(n,ui.player);render();return}
+  if(a==='x12'){log('x12-handler',{n,has:!!r,player:ui.player});if(slipLocked(r,ui.player))return toast('Schedina non più modificabile.');trackEdit(r,ui.player);const p=ensurePred(r,ui.player);const i=+b.dataset.i;p.x12[i]=p.x12[i]===b.dataset.o?'':b.dataset.o;if(!p.status&&me.owner&&!memberOf(ui.player))p.status='consegnato';markDelivered(r,p);savePred(n,ui.player);render();document.querySelector(`.cell[data-i="${i}"][data-o="${b.dataset.o}"]`)?.classList.add('pop');return}
   if(a==='deliver'){ui.confirmDeliver=true;render();return}
   if(a==='deliver-no'){ui.confirmDeliver=false;render();return}
   if(a==='deliver-yes'){ui.confirmDeliver=false;return deliver(n,ui.player)}
