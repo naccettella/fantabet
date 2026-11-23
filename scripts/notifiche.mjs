@@ -5,7 +5,9 @@
 import { getMessaging } from 'firebase-admin/messaging';
 
 export const TIPI = ['aperta', 'promemoria', 'chiusa', 'risultati', 'x12', 'esatto', 'marcatore'];
-const PROMEMORIA_ORE = 3; // promemoria quando mancano meno di 3 ore alla scadenza
+// promemoria quando manca meno di 1 ora alla scadenza (il controllo gira ogni 20 minuti, quindi arriva
+// tra 60 e 40 minuti prima). Prima delle 14 il workflow fa girare solo i promemoria (vedi in fondo).
+const PROMEMORIA_ORE = 1;
 const romeFmt = new Intl.DateTimeFormat('it-IT', { timeZone: 'Europe/Rome', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const when = iso => { try { return romeFmt.format(new Date(iso)); } catch { return ''; } };
 const gid = n => 'g' + String(n).padStart(2, '0');
@@ -101,6 +103,17 @@ export async function notifica(fs, leagues, events, now, messaging = null) {
     }
   }
   return `Notifiche: ${n} persone, ${devices} dispositivi${removed ? `, ${removed} dispositivi non più validi tolti` : ''}.`;
+}
+
+// Solo promemoria (giri del mattino, prima delle 14):  node scripts/notifiche.mjs promemoria
+if (process.argv[2] === 'promemoria') {
+  const { readFileSync } = await import('node:fs');
+  const { initializeApp, cert } = await import('firebase-admin/app');
+  const { getFirestore } = await import('firebase-admin/firestore');
+  initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || readFileSync(new URL('../service-account.json', import.meta.url), 'utf8'))) });
+  const fs = getFirestore();
+  console.log(await notifica(fs, (await fs.collection('leghe').get()).docs, [], new Date()));
+  process.exit(0);
 }
 
 // Prova a mano:  node scripts/notifiche.mjs prova <uid>   -> manda una notifica di prova a quell'account
