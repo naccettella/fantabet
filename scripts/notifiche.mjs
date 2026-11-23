@@ -5,7 +5,9 @@
 import { getMessaging } from 'firebase-admin/messaging';
 
 export const TIPI = ['aperta', 'promemoria', 'chiusa', 'risultati', 'x12', 'esatto', 'marcatore'];
-const PROMEMORIA_ORE = 3; // promemoria quando mancano meno di 3 ore alla scadenza
+// promemoria quando mancano meno di 16 ore: l'aggiornamento gira dalle 14 a mezzanotte, così
+// una scadenza di mezzogiorno riceve l'avviso la sera prima e una serale il pomeriggio stesso
+const PROMEMORIA_ORE = 16;
 const romeFmt = new Intl.DateTimeFormat('it-IT', { timeZone: 'Europe/Rome', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const when = iso => { try { return romeFmt.format(new Date(iso)); } catch { return ''; } };
 const gid = n => 'g' + String(n).padStart(2, '0');
