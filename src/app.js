@@ -89,6 +89,16 @@ function findGoals(r,name){
     const long=st.filter(t=>t.length>=3);
     if(pt.every(t=>st.includes(t))||(long.length&&long.every(t=>pt.includes(t)))){goals+=Number(s.goals)||0;names.push(s.name)}}
   return{goals,names}}
+/* squadra di un marcatore scelto, dalle rose della Serie A (fantabet/rose, scritte dallo script di aggiornamento) */
+let rose={};
+function teamOfScorer(name){const pt=tokens(name);if(!pt.length)return null;const ts=new Set();
+  for(const [n,t] of Object.entries(rose)){const st=tokens(n);const long=st.filter(x=>x.length>=3);
+    if(pt.every(x=>st.includes(x))||(long.length&&long.every(x=>pt.includes(x))))ts.add(t)}
+  return ts.size===1?[...ts][0]:null}
+/* la partita della sua squadra è finita (risultato inserito o partita nulla)? senza squadra: tutta la giornata */
+function scorerDone(r,name){const t=teamOfScorer(name);const k=x=>tokens(x).join(' ');
+  if(t){const m=r.matches.find(m=>k(m.home)===k(t)||k(m.away)===k(t));if(m)return m.nullo||validMatch(m)}
+  return r.matches.every(m=>m.nullo||validMatch(m))}
 function scoreRound(r,pid){
   const p=getPred(r,pid);
   const status=p.status||(r.calcolata?'mancato':'');
@@ -480,9 +490,9 @@ function viewPreds(r,n){
     ['1','X','2'].forEach(o=>{h+=`<button class="cell ${v&&o===out?(p.x12[i]===o?'right':'actual'):v&&p.x12[i]===o?'wrong':''}" data-act="x12" data-i="${i}" data-o="${o}" aria-pressed="${p.x12[i]===o}" aria-label="Partita ${i+1}: ${o}" ${dis||m.nullo?'disabled':''}>${o}</button>`});
     h+=`<span class="res num">${m.nullo?'<span class="chip">null</span>':v?`${m.hg}-${m.ag}`:'·'}</span>`});
   h+=`</div></section>`;
-  const sr=scoreRound(r,pid),done=r.matches.every(m=>m.nullo||validMatch(m));
+  const sr=scoreRound(r,pid);
   const exCls=k=>({preso:' hit',sbagliato:' miss'})[sr.exactRows?.[k]?.state]||'';
-  const scCls=k=>{const st=sr.scRows?.[k]?.state;return st==='segna'?' hit':st==='no'&&done?' miss':''};
+  const scCls=k=>{const st=sr.scRows?.[k]?.state;return st==='segna'?' hit':st==='no'&&scorerDone(r,p.scorers[k].name)?' miss':''};
   h+=`<section class="sheet"><h3>Risultati esatti · 3 a scelta</h3>`;
   p.exact.forEach((e,k)=>{const b=isNum(e.h)&&isNum(e.a)?exactBase(e.h,e.a):null;
     h+=`<div class="pick"><select id="exm-${k}" data-f="exm" data-k="${k}" aria-label="Partita risultato esatto ${k+1}" ${dis}><option value="-1">Scegli partita…</option>${r.matches.map((m,i)=>`<option value="${i}" ${+e.m===i?'selected':''}>${i+1}. ${esc(m.home)} – ${esc(m.away)}</option>`).join('')}</select>
@@ -516,7 +526,7 @@ function viewScores(r,n){
       h+=`<div class="line"><span>Esatti · ${s.exactHits}/3${s.exactHits>1?` ×${fmtN(MULT_EX[s.exactHits])}`:''}</span><span>${fmt(s.exact)}</span></div>`;
       h+=`<div class="detail">${s.exactRows.map(x=>x.state==='vuoto'?'':`<span>${esc(x.m?.home)}–${esc(x.m?.away)} ${x.e.h}-${x.e.a}: ${x.state==='preso'?`<b class="pos">preso ${x.b.p}</b>`:x.state==='nullo'?'nullo':x.state==='attesa'?'in attesa':x.state==='doppione'?'<span class="neg">partita già scelta, non conta</span>':x.state==='altrui'?`<span class="neg">già preso da ${esc(pname(x.by))}, non conta</span>`:x.state==='sbagliato'?`<b class="neg">no, 0</b>`:'no'}</span>`).join('')}</div>`;
       h+=`<div class="line"><span>Marcatori${s.combo?' · combo ×2,5':''}</span><span>${fmt(s.sc)}</span></div>`;
-      h+=`<div class="detail">${s.scRows.map(x=>x.state==='vuoto'?'':`<span>${esc(x.s.name)} (${ROLE[x.s.role]?.l[0]||'A'}): ${x.state==='doppione'?'<span class="neg">già scelto, non conta</span>':x.state==='altrui'?`<span class="neg">già preso da ${esc(pname(x.by))}, non conta</span>`:x.goals>0?`<b class="pos">${x.goals} gol, ${x.pts}</b>`:r.matches.every(m=>m.nullo||validMatch(m))?'<b class="neg">0 gol, 0</b>':'0 gol'}${x.names.length>1?` <span class="small neg">attenzione, trovati più giocatori: ${esc(x.names.join(', '))}. Scrivi anche l'iniziale del nome</span>`:x.names.length&&x.names.join()!==x.s.name?` <span class="small">= ${esc(x.names.join(', '))}</span>`:''}</span>`).join('')}</div>`}
+      h+=`<div class="detail">${s.scRows.map(x=>x.state==='vuoto'?'':`<span>${esc(x.s.name)} (${ROLE[x.s.role]?.l[0]||'A'}): ${x.state==='doppione'?'<span class="neg">già scelto, non conta</span>':x.state==='altrui'?`<span class="neg">già preso da ${esc(pname(x.by))}, non conta</span>`:x.goals>0?`<b class="pos">${x.goals} gol, ${x.pts}</b>`:scorerDone(r,x.s.name)?'<b class="neg">0 gol, 0</b>':'0 gol'}${x.names.length>1?` <span class="small neg">attenzione, trovati più giocatori: ${esc(x.names.join(', '))}. Scrivi anche l'iniziale del nome</span>`:x.names.length&&x.names.join()!==x.s.name?` <span class="small">= ${esc(x.names.join(', '))}</span>`:''}</span>`).join('')}</div>`}
     h+=`</div>`});
   h+=`</div>`;
   if(!me.owner)return h+`<section class="sheet small muted">${r.calcolata?'Giornata confermata: i punti sono nella classifica generale.':'Punti provvisori: la giornata entra in classifica quando l\'organizzatore la conferma.'}</section>`;
@@ -836,6 +846,7 @@ function openLeague(id,L){
   render();
   db.collection('utenti').onSnapshot(s=>{const n={};s.docs.forEach(d=>{n[d.id]={name:d.data()?.name||''}});profs=n;requestRender()},()=>{});
   db.doc('fantabet/stato').onSnapshot(s=>{stato=s.data()?JSON.parse(JSON.stringify(s.data())):null;requestRender()},()=>{});
+  db.doc('fantabet/rose').onSnapshot(s=>{rose=s.data()?.p||{};requestRender()},()=>{});
   db.doc('fantabet/rettifiche').onSnapshot(s=>{if(adjInflight)return;adj=Array.isArray(s.data()?.items)?JSON.parse(JSON.stringify(s.data().items)):[];requestRender()},()=>{});
   db.doc('fantabet/config').onSnapshot(s=>{if(cfgTimer||cfgInflight)return;const d=s.data()?JSON.parse(JSON.stringify(s.data())):null;
     me.owner=me.super||(!!d&&d.owner===me.id);if(d?.players){cfg=d;setPlayers()}watchSlips();requestRender()},()=>{});
