@@ -1,11 +1,13 @@
-# Aggiorna calendario, risultati e marcatori ogni 20 minuti (dalle 11 alle 24 ora italiana circa).
+# Aggiorna calendario, risultati e marcatori ogni 20 minuti, dalle 14 a mezzanotte ora italiana.
+# GitHub ragiona in ora UTC: il cron copre 12-22 UTC (estate e inverno) e il primo passo
+# salta i giri prima delle 14 ora italiana. Il pulsante "Run workflow" funziona sempre.
 # Fonte: ESPN (gratis, nessuna chiave). Serve un solo "secret" nel repository GitHub
 # (Settings > Secrets and variables > Actions):
 #   FIREBASE_SERVICE_ACCOUNT  tutto il contenuto del file service-account.json
 name: Aggiorna risultati
 on:
   schedule:
-    - cron: '*/20 10-22 * * *'
+    - cron: '*/20 12-22 * * *'
   workflow_dispatch: {}   # pulsante "Run workflow" per lanciarlo a mano
 concurrency: { group: aggiorna-risultati, cancel-in-progress: false }
 jobs:
@@ -13,10 +15,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - id: orario
+        run: |
+          ora=$(TZ=Europe/Rome date +%-H)
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$ora" -lt 14 ]; then
+            echo "Sono le $ora in Italia: si comincia alle 14."; echo "via=no" >> "$GITHUB_OUTPUT"
+          else echo "via=si" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.orario.outputs.via == 'si'
+        uses: actions/checkout@v4
+      - if: steps.orario.outputs.via == 'si'
+        uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
-      - run: npm ci --no-audit --no-fund
-      - run: node scripts/aggiorna-risultati.mjs
+      - if: steps.orario.outputs.via == 'si'
+        run: npm ci --no-audit --no-fund
+      - if: steps.orario.outputs.via == 'si'
+        run: node scripts/aggiorna-risultati.mjs
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
