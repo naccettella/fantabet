@@ -226,3 +226,8 @@ label.row input[type=checkbox]{flex:none;margin-top:1px}
 /* Home: i riquadri portano alla loro sezione */
 .tap{cursor:pointer;transition:transform .25s var(--spring)}
 .tap:active{transform:scale(.98)}
+/* esatti e marcatori: verde se presi, rosso se sbagliati (a risultato noto) */
+.pick.hit,.scorer.hit{background:var(--ok-soft);box-shadow:inset 3px 0 0 var(--ok);border-radius:12px;padding:6px 8px}
+.pick.miss,.scorer.miss{background:var(--red-soft);box-shadow:inset 3px 0 0 var(--red);border-radius:12px;padding:6px 8px}
+.pick.hit .chip,.scorer.hit .chip{background:var(--ok);color:#fff}
+.pick.miss .chip,.scorer.miss .chip{background:var(--red);color:#fff}

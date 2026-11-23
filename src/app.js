@@ -480,14 +480,17 @@ function viewPreds(r,n){
     ['1','X','2'].forEach(o=>{h+=`<button class="cell ${v&&o===out?(p.x12[i]===o?'right':'actual'):v&&p.x12[i]===o?'wrong':''}" data-act="x12" data-i="${i}" data-o="${o}" aria-pressed="${p.x12[i]===o}" aria-label="Partita ${i+1}: ${o}" ${dis||m.nullo?'disabled':''}>${o}</button>`});
     h+=`<span class="res num">${m.nullo?'<span class="chip">null</span>':v?`${m.hg}-${m.ag}`:'·'}</span>`});
   h+=`</div></section>`;
+  const sr=scoreRound(r,pid),done=r.matches.every(m=>m.nullo||validMatch(m));
+  const exCls=k=>({preso:' hit',sbagliato:' miss'})[sr.exactRows?.[k]?.state]||'';
+  const scCls=k=>{const st=sr.scRows?.[k]?.state;return st==='segna'?' hit':st==='no'&&done?' miss':''};
   h+=`<section class="sheet"><h3>Risultati esatti · 3 a scelta</h3>`;
   p.exact.forEach((e,k)=>{const b=isNum(e.h)&&isNum(e.a)?exactBase(e.h,e.a):null;
-    h+=`<div class="pick"><select id="exm-${k}" data-f="exm" data-k="${k}" aria-label="Partita risultato esatto ${k+1}" ${dis}><option value="-1">Scegli partita…</option>${r.matches.map((m,i)=>`<option value="${i}" ${+e.m===i?'selected':''}>${i+1}. ${esc(m.home)} – ${esc(m.away)}</option>`).join('')}</select>
+    h+=`<div class="pick${exCls(k)}"><select id="exm-${k}" data-f="exm" data-k="${k}" aria-label="Partita risultato esatto ${k+1}" ${dis}><option value="-1">Scegli partita…</option>${r.matches.map((m,i)=>`<option value="${i}" ${+e.m===i?'selected':''}>${i+1}. ${esc(m.home)} – ${esc(m.away)}</option>`).join('')}</select>
     <span class="score row" style="flex-wrap:nowrap;gap:4px"><input type="number" inputmode="numeric" min="0" id="exh-${k}" data-f="exh" data-k="${k}" value="${isNum(e.h)?e.h:''}" aria-label="Gol casa" ${dis}><span>–</span><input type="number" inputmode="numeric" min="0" id="exa-${k}" data-f="exa" data-k="${k}" value="${isNum(e.a)?e.a:''}" aria-label="Gol ospite" ${dis}></span>
     <span class="chip">${b?`${b.c} ${b.p}`:'—'}</span></div>${cl.ex[k]?`<div class="small neg">Risultato già preso da ${esc(pname(cl.ex[k]))}: scegline un altro.</div>`:''}`});
   h+=`<div class="small muted">Standard 6 · Medio 12 · Folle 25. Due presi: somma ×2,5. Tre presi: somma ×6. Ogni risultato esatto può averlo un solo giocatore: vale chi lo consegna per primo.</div></section>`;
   h+=`<section class="sheet"><h3>Marcatori · 3 giocatori</h3>`;
-  p.scorers.forEach((s,k)=>{h+=`<div class="scorer"><input type="text" id="scn-${k}" data-f="scn" data-k="${k}" value="${esc(s.name)}" placeholder="Cognome giocatore" aria-label="Marcatore ${k+1}" ${dis}><select id="scr-${k}" data-f="scr" data-k="${k}" aria-label="Ruolo" ${dis}>${Object.entries(ROLE).map(([c,o])=>`<option value="${c}" ${s.role===c?'selected':''}>${o.l} · ${o.p}</option>`).join('')}</select><span class="chip">${ROLE[s.role]?.p||4} pt</span></div>${cl.sc[k]?`<div class="small neg">${esc(s.name)} è già stato scelto da ${esc(pname(cl.sc[k]))}: scegline un altro.</div>`:''}`});
+  p.scorers.forEach((s,k)=>{h+=`<div class="scorer${scCls(k)}"><input type="text" id="scn-${k}" data-f="scn" data-k="${k}" value="${esc(s.name)}" placeholder="Cognome giocatore" aria-label="Marcatore ${k+1}" ${dis}><select id="scr-${k}" data-f="scr" data-k="${k}" aria-label="Ruolo" ${dis}>${Object.entries(ROLE).map(([c,o])=>`<option value="${c}" ${s.role===c?'selected':''}>${o.l} · ${o.p}</option>`).join('')}</select><span class="chip">${ROLE[s.role]?.p||4} pt</span></div>${cl.sc[k]?`<div class="small neg">${esc(s.name)} è già stato scelto da ${esc(pname(cl.sc[k]))}: scegline un altro.</div>`:''}`});
   h+=`<div class="small muted">Doppietta ×2, tripletta o più ×3. Se segnano tutti e tre: totale ×2,5. Chi non gioca prende 0. Ogni marcatore può averlo un solo giocatore: vale chi lo consegna per primo.</div></section>`;
   if(linked&&!lock&&p.status!=='consegnato'){
     const missing=r.matches.filter((m,i)=>!m.nullo&&!p.x12[i]).length;
