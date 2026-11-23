@@ -223,3 +223,6 @@ label.row input[type=checkbox]{flex:none;margin-top:1px}
 .chatpeek div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .foot{text-align:center;color:var(--muted);font-size:13px}
 @media (max-width:360px){.widget .v{font-size:26px}.tabs button{font-size:9.5px}}
+/* Home: i riquadri portano alla loro sezione */
+.tap{cursor:pointer;transition:transform .25s var(--spring)}
+.tap:active{transform:scale(.98)}

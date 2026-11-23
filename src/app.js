@@ -535,22 +535,22 @@ function mySlipPeek(){const mine=myPid();if(!mine)return'';
   const n=nums[nums.length-1];if(!n)return'';const r=rounds[n];if(!canSee(r,mine))return'';const p=getPred(r,mine);
   let hit=0,val=0;const rowsH=r.matches.map((m,i)=>{const v=validMatch(m)&&!m.nullo;const out=v?outcome(m):null;const pk=p.x12[i]||'';if(v&&pk){val++;if(pk===out)hit++}
     return`<div class="m"><span class="t">${esc(m.home)} – ${esc(m.away)}</span><span class="pk ${v&&pk?(pk===out?'right':'wrong'):''}">${esc(pk)||'·'}</span><span class="res">${m.nullo?'—':v?`${m.hg}-${m.ag}`:'·'}</span></div>`}).join('');
-  return`<section class="sheet"><div class="row spread"><h3>La tua schedina · G${n}</h3><span class="chip ${hit?'ok':''}">${hit} su ${val} presi</span></div><div class="myslip">${rowsH}</div><button class="btn small" data-act="open-round" data-n="${n}" style="align-self:flex-start">Apri la giornata ${n}</button></section>`}
+  return`<section class="sheet tap" data-act="open-round" data-n="${n}" role="button" tabindex="0"><div class="row spread"><h3>La tua schedina · G${n}</h3><span class="chip ${hit?'ok':''}">${hit} su ${val} presi</span></div><div class="myslip">${rowsH}</div><button class="btn small" data-act="open-round" data-n="${n}" style="align-self:flex-start">Apri la giornata ${n}</button></section>`}
 function chatPeek(){const msgs=Object.entries(chat).flatMap(([u,items])=>(items||[]).map(m=>({...m,u}))).sort((a,b)=>a.at<b.at?-1:1).slice(-3);
-  return`<section class="sheet"><div class="row spread"><h3>Chat</h3><button class="btn small" data-act="tab" data-k="chat">Apri la chat</button></div>${msgs.length?`<div class="chatpeek">${msgs.map(m=>`<div><b>${esc(author(m.u))}</b> ${esc(m.text)}</div>`).join('')}</div>`:'<div class="small muted">Ancora nessun messaggio.</div>'}</section>`}
+  return`<section class="sheet tap" data-act="tab" data-k="chat" role="button" tabindex="0"><div class="row spread"><h3>Chat</h3><button class="btn small" data-act="tab" data-k="chat">Apri la chat</button></div>${msgs.length?`<div class="chatpeek">${msgs.map(m=>`<div><b>${esc(author(m.u))}</b> ${esc(m.text)}</div>`).join('')}</div>`:'<div class="small muted">Ancora nessun messaggio.</div>'}</section>`}
 function viewHome(){
   if(dbState==='loading')return`<div class="sheet empty">Carico…</div>`;
   const {rows,nums}=standings();const mine=myPid();const me1=rows.find(r=>r.pid===mine);
   const g=currentG();const r=rounds[g];
   let h=`<h2 class="hello">Ciao ${esc(mine?pname(mine):(myName||''))}</h2>`;
-  let w1=me1?`<div class="widget"><div class="k">Sei</div><div class="v">${me1.rank}°</div><div class="s">${fmtN(me1.tot)} punti · ${me1.rank===1?(rows[1]?`+${fmtN(r1(me1.tot-rows[1].tot))} sul 2°`:'in testa'):`−${fmtN(r1(rows[0].tot-me1.tot))} dal 1°`}</div></div>`:`<div class="widget"><div class="k">Classifica</div><div class="v">${nums.length}</div><div class="s">giornate calcolate</div></div>`;
+  let w1=me1?`<div class="widget tap" data-act="tab" data-k="classifica" role="button" tabindex="0"><div class="k">Sei</div><div class="v">${me1.rank}°</div><div class="s">${fmtN(me1.tot)} punti · ${me1.rank===1?(rows[1]?`+${fmtN(r1(me1.tot-rows[1].tot))} sul 2°`:'in testa'):`−${fmtN(r1(rows[0].tot-me1.tot))} dal 1°`}</div></div>`:`<div class="widget tap" data-act="tab" data-k="classifica" role="button" tabindex="0"><div class="k">Classifica</div><div class="v">${nums.length}</div><div class="s">giornate calcolate</div></div>`;
   const cd=r&&r.deadline&&!pastDl(r)?countdown(r.deadline):'';
-  let w2=`<div class="widget orange"><div class="k">Giornata ${g}</div><div class="v">${cd||(r?(r.calcolata?'✓':'In corso'):'—')}</div><div class="s">${cd?'alla scadenza':r?(r.calcolata?'calcolata':'risultati in arrivo'):'non ancora creata'}</div></div>`;
+  let w2=`<div class="widget orange tap" data-act="tab" data-k="giornata" role="button" tabindex="0"><div class="k">Giornata ${g}</div><div class="v">${cd||(r?(r.calcolata?'✓':'In corso'):'—')}</div><div class="s">${cd?'alla scadenza':r?(r.calcolata?'calcolata':'risultati in arrivo'):'non ancora creata'}</div></div>`;
   h+=`<div class="widgets">${w1}${w2}</div>`;
   const todo=r&&mine&&!pastDl(r)&&getPred(r,mine).status!=='consegnato';
   h+=`<button class="btn primary cta" data-act="go-round">${todo?'Compila la schedina':`Vai alla giornata ${g}`}</button>`;
   h+=notifCard();
-  if(rows.length)h+=`<section class="sheet"><div class="row spread"><h3>Classifica</h3><span class="chip">${nums.length} / 38</span></div>${miniTable(rows,nums)}</section>`;
+  if(rows.length)h+=`<section class="sheet tap" data-act="tab" data-k="classifica" role="button" tabindex="0"><div class="row spread"><h3>Classifica</h3><span class="chip">${nums.length} / 38 ›</span></div>${miniTable(rows,nums)}</section>`;
   h+=mySlipPeek();
   if(mine||me.owner)h+=chatPeek();
   else if(me.id)h+=joinCard();
