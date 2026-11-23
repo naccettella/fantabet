@@ -477,7 +477,7 @@ function viewPreds(r,n){
   h+=`<div class="slip"><span></span><span class="hdr" style="text-align:left">Partita</span><span class="hdr">1</span><span class="hdr">X</span><span class="hdr">2</span><span class="hdr">Esito</span>`;
   r.matches.forEach((m,i)=>{const v=validMatch(m);const out=v?outcome(m):null;
     h+=`<span class="idx">${i+1}</span><span class="teams">${esc(m.home)}<br>${esc(m.away)}</span>`;
-    ['1','X','2'].forEach(o=>{h+=`<button class="cell ${v&&o===out?(p.x12[i]===o?'right':'actual'):''}" data-act="x12" data-i="${i}" data-o="${o}" aria-pressed="${p.x12[i]===o}" aria-label="Partita ${i+1}: ${o}" ${dis||m.nullo?'disabled':''}>${o}</button>`});
+    ['1','X','2'].forEach(o=>{h+=`<button class="cell ${v&&o===out?(p.x12[i]===o?'right':'actual'):v&&p.x12[i]===o?'wrong':''}" data-act="x12" data-i="${i}" data-o="${o}" aria-pressed="${p.x12[i]===o}" aria-label="Partita ${i+1}: ${o}" ${dis||m.nullo?'disabled':''}>${o}</button>`});
     h+=`<span class="res num">${m.nullo?'<span class="chip">null</span>':v?`${m.hg}-${m.ag}`:'·'}</span>`});
   h+=`</div></section>`;
   h+=`<section class="sheet"><h3>Risultati esatti · 3 a scelta</h3>`;
