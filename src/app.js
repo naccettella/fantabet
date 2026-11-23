@@ -252,7 +252,7 @@ function armDeadline(){clearTimeout(dlTimer);const now=Date.now();
   if(next)dlTimer=setTimeout(()=>{document.activeElement?.blur?.();render();toast('Scadenza passata: le schedine sono chiuse.')},Math.min(next-now+500,2147483000))}
 function render(){
   if(!live())return;armDeadline();
-  document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===ui.tab));
+  document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',!ui.account&&b.dataset.tab===ui.tab));
   const v=$('#view');
   const html=ui.account?viewAccount():ui.tab==='classifica'?viewStandings():ui.tab==='giornata'?viewRound():ui.tab==='chat'?viewChat():viewRules();
   if(html===lastHtml&&v.firstChild)return;
