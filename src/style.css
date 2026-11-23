@@ -223,9 +223,3 @@ label.row input[type=checkbox]{flex:none;margin-top:1px}
 .chatpeek div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .foot{text-align:center;color:var(--muted);font-size:13px}
 @media (max-width:360px){.widget .v{font-size:26px}.tabs button{font-size:9.5px}}
-
-/* lega attuale in Home, con pulsante ben visibile per cambiarla */
-.lega-pill{display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px;margin:0 0 14px;padding:10px 12px 10px 16px;border:0;border-radius:14px;background:var(--paper);box-shadow:var(--shadow);color:var(--ink);font-size:15px;cursor:pointer;text-align:left}
-.lega-pill b{font-weight:700}
-.lega-pill .cl{flex:none;background:#ff9500;color:#fff;font-weight:700;font-size:14px;padding:7px 12px;border-radius:999px}
-.lega-pill:active{transform:scale(.98)}

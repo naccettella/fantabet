@@ -543,7 +543,6 @@ function viewHome(){
   const {rows,nums}=standings();const mine=myPid();const me1=rows.find(r=>r.pid===mine);
   const g=currentG();const r=rounds[g];
   let h=`<h2 class="hello">Ciao ${esc(mine?pname(mine):(myName||''))}</h2>`;
-  h+=`<button class="lega-pill" data-act="change-league"><span>Lega <b>${esc(curLeague.nome||'')}</b></span><span class="cl">⇄ Cambia lega</span></button>`;
   let w1=me1?`<div class="widget"><div class="k">Sei</div><div class="v">${me1.rank}°</div><div class="s">${fmtN(me1.tot)} punti · ${me1.rank===1?(rows[1]?`+${fmtN(r1(me1.tot-rows[1].tot))} sul 2°`:'in testa'):`−${fmtN(r1(rows[0].tot-me1.tot))} dal 1°`}</div></div>`:`<div class="widget"><div class="k">Classifica</div><div class="v">${nums.length}</div><div class="s">giornate calcolate</div></div>`;
   const cd=r&&r.deadline&&!pastDl(r)?countdown(r.deadline):'';
   let w2=`<div class="widget orange"><div class="k">Giornata ${g}</div><div class="v">${cd||(r?(r.calcolata?'✓':'In corso'):'—')}</div><div class="s">${cd?'alla scadenza':r?(r.calcolata?'calcolata':'risultati in arrivo'):'non ancora creata'}</div></div>`;
@@ -776,6 +775,7 @@ function viewAccount(){
   return`<section class="sheet"><div class="row spread"><h2>Account</h2><button class="btn" data-act="acct-back">Indietro</button></div>
     <div class="row">${user?.photoURL?`<img src="${esc(user.photoURL)}" alt="" width="48" height="48" style="border-radius:50%" referrerpolicy="no-referrer">`:''}<div><div><b>${esc(user?.displayName||myName||'')}</b>${me.super?' <span class="chip gold">Super admin</span>':''}</div><div class="small muted">${esc(user?.email||'')}</div></div></div>
     <div class="small">Leghe: ${leghe.length?leghe.map(([id,n])=>esc(n)).join(', '):'nessuna'}${inLeague?` · in questa lega sei <b>${esc(role)}</b>${pid?` (${esc(pname(pid))})`:''}`:''}</div>
+    ${inLeague?`<div class="row"><button class="btn" data-act="change-league">⇄ Cambia lega</button><span class="small muted">ora sei in <b>${esc(curLeague.nome||'')}</b></span></div>`:''}
     <div class="small muted">Ultimo accesso ${esc(acct.at?new Date(acct.at).toLocaleString('it-IT',{timeZone:'Europe/Rome'}):'—')}</div></section>
   <section class="sheet"><div class="row spread"><h2>Notifiche</h2>${pst}</div>
     ${pushSt==='off'?'<div class="row"><button class="btn primary" data-act="push-on">Attiva su questo dispositivo</button></div>':pushSt==='on'?'<div class="row"><button class="btn" data-act="push-off">Spegni su questo dispositivo</button></div>':`<div class="small">${help}</div>`}
