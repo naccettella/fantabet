@@ -704,7 +704,7 @@ async function createLeague(nome,pw){
 /* ---------- account: dati e preferenze (notifiche) ---------- */
 let pushSt='no',acct={},inLeague=false,pushBusy=false;
 const pushNo=()=>{try{return localStorage.getItem('fb-push-no')==='1'}catch(e){return false}};
-const NOTIF=[['aperta','Giornata aperta (con la scadenza)',true],['promemoria','Promemoria prima della scadenza (il giorno stesso o la sera prima), se non hai consegnato',true],['x12','1X2 preso',true],['esatto','Risultato esatto preso',true],['marcatore','Il tuo marcatore ha segnato',true],['risultati','Tutti i risultati, anche quando il tuo 1X2 è sbagliato',false],['chiusa','Giornata confermata in classifica',true]];
+const NOTIF=[['aperta','Giornata aperta (con la scadenza)',true],['promemoria','Promemoria 1 ora prima della scadenza, se non hai consegnato',true],['x12','1X2 preso',true],['esatto','Risultato esatto preso',true],['marcatore','Il tuo marcatore ha segnato',true],['risultati','Tutti i risultati, anche quando il tuo 1X2 è sbagliato',false],['chiusa','Giornata confermata in classifica',true]];
 const prefOn=(k,def)=>acct.notifiche?.[k]===undefined?def:!!acct.notifiche[k];
 function viewAccount(){
   const leghe=Object.entries(acct.leghe||{});const pid=inLeague?myPid():null;
@@ -717,7 +717,7 @@ function viewAccount(){
     <div class="small muted">Ultimo accesso ${esc(acct.at?new Date(acct.at).toLocaleString('it-IT',{timeZone:'Europe/Rome'}):'—')}</div></section>
   <section class="sheet"><div class="row spread"><h2>Notifiche</h2>${pst}</div>
     ${pushSt==='off'?'<div class="row"><button class="btn primary" data-act="push-on">Attiva su questo dispositivo</button></div>':pushSt==='on'?'<div class="row"><button class="btn" data-act="push-off">Spegni su questo dispositivo</button></div>':`<div class="small">${help}</div>`}
-    <div class="small muted">Scegli cosa ricevere (vale per tutti i tuoi dispositivi). Gli avvisi arrivano entro 20 minuti, dalle 14 a mezzanotte.</div>
+    <div class="small muted">Scegli cosa ricevere (vale per tutti i tuoi dispositivi). Gli avvisi arrivano entro 20 minuti, dalle 14 a mezzanotte (il promemoria anche al mattino).</div>
     ${NOTIF.map(([k,l,d])=>`<label class="row" style="gap:10px;cursor:pointer"><input type="checkbox" data-act="pref" data-k="${k}" ${prefOn(k,d)?'checked':''}><span>${esc(l)}</span></label>`).join('')}</section>
   <section class="sheet"><div class="row"><button class="btn danger" data-act="acct-logout">Esci dall'account</button></div></section>`}
 function refreshAccount(){if(inLeague)return requestRender();$('#view').innerHTML=viewAccount()}

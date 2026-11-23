@@ -1,13 +1,14 @@
 # Aggiorna calendario, risultati e marcatori ogni 20 minuti, dalle 14 a mezzanotte ora italiana.
-# GitHub ragiona in ora UTC: il cron copre 12-22 UTC (estate e inverno) e il primo passo
-# salta i giri prima delle 14 ora italiana. Il pulsante "Run workflow" funziona sempre.
+# Al mattino (dalle 9-10 alle 14) gira solo il promemoria "non hai ancora consegnato", così arriva
+# 1 ora prima anche per le partite delle 12:30. GitHub ragiona in ora UTC: il cron copre 8-22 UTC
+# (estate e inverno) e il primo passo sceglie cosa fare. Il pulsante "Run workflow" fa sempre tutto.
 # Fonte: ESPN (gratis, nessuna chiave). Serve un solo "secret" nel repository GitHub
 # (Settings > Secrets and variables > Actions):
 #   FIREBASE_SERVICE_ACCOUNT  tutto il contenuto del file service-account.json
 name: Aggiorna risultati
 on:
   schedule:
-    - cron: '*/20 12-22 * * *'
+    - cron: '*/20 8-22 * * *'
   workflow_dispatch: {}   # pulsante "Run workflow" per lanciarlo a mano
 concurrency: { group: aggiorna-risultati, cancel-in-progress: false }
 jobs:
@@ -19,16 +20,20 @@ jobs:
         run: |
           ora=$(TZ=Europe/Rome date +%-H)
           if [ "${{ github.event_name }}" = "schedule" ] && [ "$ora" -lt 14 ]; then
-            echo "Sono le $ora in Italia: si comincia alle 14."; echo "via=no" >> "$GITHUB_OUTPUT"
+            echo "Sono le $ora in Italia: prima delle 14 solo i promemoria."; echo "via=promemoria" >> "$GITHUB_OUTPUT"
           else echo "via=si" >> "$GITHUB_OUTPUT"; fi
-      - if: steps.orario.outputs.via == 'si'
+      - if: steps.orario.outputs.via != 'no'
         uses: actions/checkout@v4
-      - if: steps.orario.outputs.via == 'si'
+      - if: steps.orario.outputs.via != 'no'
         uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
-      - if: steps.orario.outputs.via == 'si'
+      - if: steps.orario.outputs.via != 'no'
         run: npm ci --no-audit --no-fund
       - if: steps.orario.outputs.via == 'si'
         run: node scripts/aggiorna-risultati.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - if: steps.orario.outputs.via == 'promemoria'
+        run: node scripts/notifiche.mjs promemoria
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
