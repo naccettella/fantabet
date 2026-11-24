@@ -1,39 +1,90 @@
 # Aggiorna calendario, risultati e marcatori ogni 20 minuti, dalle 14 a mezzanotte ora italiana.
-# Al mattino (dalle 9-10 alle 14) gira solo il promemoria "non hai ancora consegnato", così arriva
-# 1 ora prima anche per le partite delle 12:30. GitHub ragiona in ora UTC: il cron copre 8-22 UTC
-# (estate e inverno) e il primo passo sceglie cosa fare. Il pulsante "Run workflow" fa sempre tutto.
+# Al mattino (dalle 9 alle 14) manda solo il promemoria "non hai ancora consegnato", così arriva
+# 1 ora prima anche per le partite delle 12:30.
+#
+# PERCHÉ NON USIAMO PIÙ SOLO IL "CRON" DI GITHUB: gli avvii programmati di GitHub sono "al meglio":
+# nei primi giorni ne sono partiti 2 in 36 ore invece di ~40 (e il backup del lunedì alle 5 è partito alle 15).
+# Così ora il lavoro gira da solo come una "staffetta": ogni avvio resta acceso circa 5 ore e mezza,
+# controlla ogni 20 minuti e prima di spegnersi avvia il successivo. Il cron orario resta solo come
+# riserva: se la staffetta si interrompe la fa ripartire, se è già accesa esce subito.
+# Il repository è pubblico, quindi i minuti di GitHub Actions sono gratis.
+#
+# Il pulsante "Run workflow" fa sempre subito un aggiornamento completo.
 # Fonte: ESPN (gratis, nessuna chiave). Serve un solo "secret" nel repository GitHub
 # (Settings > Secrets and variables > Actions):
 #   FIREBASE_SERVICE_ACCOUNT  tutto il contenuto del file service-account.json
 name: Aggiorna risultati
 on:
   schedule:
-    - cron: '*/20 8-22 * * *'
-  workflow_dispatch: {}   # pulsante "Run workflow" per lanciarlo a mano
-concurrency: { group: aggiorna-risultati, cancel-in-progress: false }
+    - cron: '17 * * * *'   # riserva: riaccende la staffetta se si è fermata
+  workflow_dispatch:
+    inputs:
+      catena:
+        description: 'Avvio automatico della staffetta (lasciare vuoto)'
+        required: false
+        default: 'no'
+      minuti:
+        description: 'Per quanti minuti restare acceso (solo per prove)'
+        required: false
+        default: '330'
+permissions:
+  contents: read
+  actions: write   # serve per avviare il turno successivo della staffetta
 jobs:
   aggiorna:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 355
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      MANUALE: ${{ github.event_name == 'workflow_dispatch' && inputs.catena != 'si' && 'si' || 'no' }}
+      MINUTI: ${{ inputs.minuti || '330' }}
     steps:
-      - id: orario
+      - id: turno
+        name: La staffetta è già accesa?
         run: |
-          ora=$(TZ=Europe/Rome date +%-H)
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$ora" -lt 14 ]; then
-            echo "Sono le $ora in Italia: prima delle 14 solo i promemoria."; echo "via=promemoria" >> "$GITHUB_OUTPUT"
-          else echo "via=si" >> "$GITHUB_OUTPUT"; fi
-      - if: steps.orario.outputs.via != 'no'
+          # il turno successivo aspetta che il precedente abbia finito di spegnersi
+          if [ "${{ inputs.catena }}" = "si" ]; then sleep 60; fi
+          altri=$(gh run list --workflow aggiorna-risultati.yml --status in_progress --limit 20 \
+            --json databaseId --jq '[.[] | select(.databaseId < ${{ github.run_id }})] | length')
+          if [ "$altri" -gt 0 ]; then
+            echo "La staffetta è già accesa."; echo "accesa=si" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nessun turno acceso: parto io."; echo "accesa=no" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.turno.outputs.accesa == 'no' || env.MANUALE == 'si'
         uses: actions/checkout@v4
-      - if: steps.orario.outputs.via != 'no'
+      - if: steps.turno.outputs.accesa == 'no' || env.MANUALE == 'si'
         uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
-      - if: steps.orario.outputs.via != 'no'
+      - if: steps.turno.outputs.accesa == 'no' || env.MANUALE == 'si'
         run: npm ci --no-audit --no-fund
-      - if: steps.orario.outputs.via == 'si'
+      - if: env.MANUALE == 'si'
+        name: Aggiornamento completo subito (avvio a mano)
         run: node scripts/aggiorna-risultati.mjs
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-      - if: steps.orario.outputs.via == 'promemoria'
-        run: node scripts/notifiche.mjs promemoria
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - if: steps.turno.outputs.accesa == 'no'
+        name: Controlla ogni 20 minuti
+        run: |
+          fine=$(( $(date +%s) + MINUTI * 60 ))
+          errori=0
+          while :; do
+            ora=$(TZ=Europe/Rome date +%-H)
+            echo "== $(TZ=Europe/Rome date '+%d/%m %H:%M') ora italiana"
+            if [ "$ora" -ge 14 ]; then
+              node scripts/aggiorna-risultati.mjs || { errori=$((errori+1)); echo "ERRORE: riprovo al prossimo giro"; }
+            elif [ "$ora" -ge 9 ]; then
+              node scripts/notifiche.mjs promemoria || { errori=$((errori+1)); echo "ERRORE: riprovo al prossimo giro"; }
+            else
+              echo "Notte: niente da fare."
+            fi
+            # prossimo giro allo scoccare dei :00, :20 o :40
+            attesa=$(( 1200 - $(date +%s) % 1200 ))
+            [ $(( $(date +%s) + attesa )) -ge "$fine" ] && break
+            sleep "$attesa"
+          done
+          echo "Fine turno. Errori: $errori"
+          [ "$errori" -eq 0 ]
+      - if: ${{ !cancelled() && steps.turno.outputs.accesa == 'no' && github.ref_name == 'main' }}
+        name: Passa il testimone al turno successivo
+        run: gh workflow run aggiorna-risultati.yml --ref main -f catena=si
