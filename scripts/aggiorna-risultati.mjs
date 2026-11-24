@@ -102,6 +102,12 @@ function whenLabel(iso) {
 }
 const isNum = v => v !== null && v !== '' && v !== undefined && !isNaN(Number(v));
 const tokens = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z]+/g, ' ').trim();
+/* stesso giocatore? "Kean" = "Moise Kean": tutte le parole (di almeno 3 lettere) di un nome stanno nell'altro */
+function samePlayer(a, b) {
+  const A = tokens(a).split(' ').filter(t => t.length >= 3), B = tokens(b).split(' ').filter(t => t.length >= 3);
+  if (!A.length || !B.length) return tokens(a) === tokens(b) && !!tokens(a);
+  return A.every(t => B.includes(t)) || B.every(t => A.includes(t));
+}
 
 
 /* ============ 1. calendario e risultati "ufficiali" in serieA/{gNN} (uguali per tutte le leghe) ============ */
@@ -239,7 +245,10 @@ for (const L of leagues) {
     });
     const sc = [...(r.scorers || [])];
     for (const s of (M.scorers || []).filter(s => s.auto)) {
-      if (!sc.some(x => x.auto && x.apiFixture === s.apiFixture && tokens(x.name) === tokens(s.name))) { sc.push(s); changed = true; events.push({ L, tipo: 'gol', n, s }); }
+      if (sc.some(x => x.auto && x.apiFixture === s.apiFixture && tokens(x.name) === tokens(s.name))) continue;
+      // lo stesso giocatore inserito a mano dall'organizzatore: vale quello, altrimenti i gol si conterebbero due volte
+      if (sc.some(x => !x.auto && samePlayer(x.name, s.name))) continue;
+      sc.push(s); changed = true; events.push({ L, tipo: 'gol', n, s });
     }
     const upd = {};
     if (!r.deadline && M.deadline) { upd.deadline = M.deadline; if (M.deadlineTs) upd.deadlineTs = M.deadlineTs; changed = true; }
