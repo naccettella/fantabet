@@ -15,7 +15,7 @@ const saveFail={};
 let cfg={players:{p1:'Giocatore 1',p2:'Giocatore 2',p3:'Giocatore 3'}};
 let rounds={};
 let ui={tab:'home',page:null,g:null,sub:'pronostici',player:'p1',editTeams:false,importing:false,confirmReopen:false};
-try{const s=JSON.parse(localStorage.getItem('fb-ui2')||'{}');['tab','g','sub','player'].forEach(k=>{if(s[k]!=null)ui[k]=s[k]})}catch(e){}
+try{const s=JSON.parse(localStorage.getItem('fb-ui2')||'{}');['tab','sub','player'].forEach(k=>{if(s[k]!=null)ui[k]=s[k]})}catch(e){}
 if(!['home','giornata','classifica','chat','altro'].includes(ui.tab))ui.tab=ui.tab==='regole'?'altro':'home';
 function saveUi(){try{localStorage.setItem('fb-ui2',JSON.stringify({tab:ui.tab,g:ui.g,sub:ui.sub,player:ui.player}))}catch(e){}}
 
@@ -262,9 +262,13 @@ document.addEventListener('focusout',()=>setTimeout(()=>{if(dirty&&!inputFocused
 
 function currentG(){
   if(ui.g&&ui.g>=1&&ui.g<=38)return ui.g;
+  return liveG()}
+/* la giornata "di adesso": quella con la consegna ancora aperta; se non c'è, la prima non ancora confermata; poi l'ultima */
+function liveG(){
   const nums=Object.keys(rounds).map(Number).sort((a,b)=>a-b);
+  const toFill=nums.filter(n=>!rounds[n].calcolata&&rounds[n].deadline&&!pastDl(rounds[n]));
   const open=nums.filter(n=>!rounds[n].calcolata);
-  return open[0]||nums[nums.length-1]||1}
+  return toFill[0]||open[0]||nums[nums.length-1]||1}
 
 /* close the slips on screen the moment the next deadline passes, even with a field focused */
 let dlTimer=null;
@@ -567,7 +571,7 @@ function chatPeek(){const msgs=Object.entries(chat).flatMap(([u,items])=>(items|
 function viewHome(){
   if(dbState==='loading')return`<div class="sheet empty">Carico…</div>`;
   const {rows,nums}=standings();const mine=myPid();const me1=rows.find(r=>r.pid===mine);
-  const g=currentG();const r=rounds[g];
+  const g=liveG();const r=rounds[g];
   let h=`<h2 class="hello">Ciao ${esc(mine?pname(mine):(myName||''))}</h2>`;
   let w1=me1?`<div class="widget tap" data-act="tab" data-k="classifica" role="button" tabindex="0"><div class="k">Sei</div><div class="v">${me1.rank}°</div><div class="s">${fmtN(me1.tot)} punti · ${me1.rank===1?(rows[1]?`+${fmtN(r1(me1.tot-rows[1].tot))} sul 2°`:'in testa'):`−${fmtN(r1(rows[0].tot-me1.tot))} dal 1°`}</div></div>`:`<div class="widget tap" data-act="tab" data-k="classifica" role="button" tabindex="0"><div class="k">Classifica</div><div class="v">${nums.length}</div><div class="s">giornate calcolate</div></div>`;
   const cd=r&&r.deadline&&!pastDl(r)?countdown(r.deadline):'';
@@ -616,13 +620,13 @@ function viewRules(){
   <section class="sheet"><h2>Spareggi a fine anno</h2><div>Record di giornata, poi punti della sola colonna 1X2, poi risultati esatti presi, poi sorteggio o partita secca.</div></section>`}
 
 /* ---------- events ---------- */
-document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;ui.account=false;ui.page=null;ui.tab=b.dataset.tab;saveUi();render();window.scrollTo(0,0);const v=$('#view');v.classList.remove('enter');void v.offsetWidth;v.classList.add('enter')});
+document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;ui.account=false;ui.page=null;if(b.dataset.tab==='giornata')ui.g=null;ui.tab=b.dataset.tab;saveUi();render();window.scrollTo(0,0);const v=$('#view');v.classList.remove('enter');void v.offsetWidth;v.classList.add('enter')});
 $('#view').addEventListener('click',async e=>{
   const b=e.target.closest('[data-act]');if(!b)return;if(b.disabled){log('disabled-click',{act:b.dataset.act});return}const a=b.dataset.act;const n=currentG();const r=rounds[n];
-  if(a==='go-round'){ui.tab='giornata';ui.page=null;saveUi();render();window.scrollTo(0,0);return}
+  if(a==='go-round'){ui.tab='giornata';ui.page=null;ui.g=null;ui.sub='pronostici';saveUi();render();window.scrollTo(0,0);return}
   if(a==='page'){ui.page=b.dataset.k;render();window.scrollTo(0,0);return}
   if(a==='back'){ui.page=null;render();window.scrollTo(0,0);return}
-  if(a==='tab'){ui.tab=b.dataset.k;ui.page=null;saveUi();render();window.scrollTo(0,0);return}
+  if(a==='tab'){if(b.dataset.k==='giornata')ui.g=null;ui.tab=b.dataset.k;ui.page=null;saveUi();render();window.scrollTo(0,0);return}
   if(a==='open-account'){openAccount();window.scrollTo(0,0);return}
   if(a==='change-league'){try{localStorage.removeItem('fb-lega')}catch(e){}location.reload();return}
   if(a==='albo'){ui.albo=ui.albo===b.dataset.id?null:b.dataset.id;render();return}
@@ -728,6 +732,9 @@ watchUser(async u=>{
   db.doc('utenti/'+u.uid).onSnapshot(s=>{acct=s.data()||{};if(ui.account)refreshAccount()},()=>{});myName=u.displayName||'Partecipante';
   await db.doc('utenti/'+u.uid).set({name:myName,at:new Date().toISOString()}).catch(()=>{});
   let lid=null;try{lid=localStorage.getItem('fb-lega')}catch(e){}
+  // aperta da una notifica: /?lega=…&g=13&v=pronostici apre direttamente quella giornata
+  {const q=new URLSearchParams(location.search);const qg=+q.get('g');const qv=q.get('v');
+    if(qg>=1&&qg<=38){ui.tab='giornata';ui.page=null;ui.g=qg;if(['pronostici','partite','punteggi'].includes(qv))ui.sub=qv}}
   const inv=slug(new URLSearchParams(location.search).get('lega')||'');if(inv){lid=inv;invited=inv;try{history.replaceState(null,'',location.pathname)}catch(e){}}
   if(lid){try{setLeague(lid);const L=await db.doc('leghe/'+lid).get();const ok=L&&(me.super||L.owner===me.id||await db.doc('iscritti/'+me.id).get().then(x=>!!x).catch(()=>false));if(ok){openLeague(lid,L);return}}catch(e){}}
   setLeague(null);try{localStorage.removeItem('fb-lega')}catch(e){}

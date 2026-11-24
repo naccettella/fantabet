@@ -46,8 +46,13 @@ jobs:
         run: |
           # il turno successivo aspetta che il precedente abbia finito di spegnersi
           if [ "${{ inputs.catena }}" = "si" ]; then sleep 60; fi
-          altri=$(gh run list --workflow aggiorna-risultati.yml --status in_progress --limit 20 \
-            --json databaseId --jq '[.[] | select(.databaseId < ${{ github.run_id }})] | length')
+          # un turno appena fermato a mano risulta "in corso" ancora per qualche secondo: si ricontrolla per 2 minuti
+          for i in 1 2 3 4 5; do
+            altri=$(gh run list --workflow aggiorna-risultati.yml --status in_progress --limit 20 \
+              --json databaseId --jq '[.[] | select(.databaseId < ${{ github.run_id }})] | length')
+            [ "$altri" -eq 0 ] && break
+            [ "$i" -lt 5 ] && sleep 30
+          done
           if [ "$altri" -gt 0 ]; then
             echo "La staffetta è già accesa."; echo "accesa=si" >> "$GITHUB_OUTPUT"
           else
