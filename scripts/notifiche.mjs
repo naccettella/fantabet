@@ -4,7 +4,7 @@
 // (ogni tipo è attivo se non è stato spento). Gli avvisi già mandati sono in leghe/{lega}/fantabet/notifiche.
 import { getMessaging } from 'firebase-admin/messaging';
 
-export const TIPI = ['aperta', 'promemoria', 'chiusa', 'risultati', 'x12', 'esatto', 'marcatore'];
+export const TIPI = ['aperta', 'promemoria', 'chiusa', 'risultati', 'x12', 'esatto', 'marcatore', 'rinvio'];
 // promemoria quando manca meno di 1 ora alla scadenza (il controllo gira ogni 20 minuti, quindi arriva
 // tra 60 e 40 minuti prima). Prima delle 14 il workflow fa girare solo i promemoria (vedi in fondo).
 const PROMEMORIA_ORE = 1;
@@ -23,9 +23,12 @@ function sameScorer(pred, real) {
 
 export async function notifica(fs, leagues, events, now, messaging = null) {
   const out = {}; // uid -> [{ tipo, line, tag }]
-  const add = (uid, tipo, line, tag) => { (out[uid] = out[uid] || []).push({ tipo, line, tag }); };
+  let curL = null; // lega e giornata di ogni voce: servono per aprire la pagina giusta toccando la notifica
+  const add = (uid, tipo, line, tag, n) => { (out[uid] = out[uid] || []).push({ tipo, line, tag, legaId: curL, n: n ?? curN }); };
+  let curN = null;
   const prefsCache = {};
   for (const L of leagues) {
+    curL = L.id;
     const nome = L.data().nome || L.id;
     const cfg = (await L.ref.collection('fantabet').doc('config').get()).data() || {};
     const uids = [...new Set(Object.values(cfg.members || {}).filter(Boolean))];
@@ -43,6 +46,10 @@ export async function notifica(fs, leagues, events, now, messaging = null) {
     const ev = events.filter(e => e.L.id === L.id);
 
     for (const e of ev) {
+      curN = e.n;
+      // partita rinviata o sospesa: solo all'organizzatore, che deve decidere se segnarla nulla
+      if (e.tipo === 'rinvio' && L.data().owner && once('rinvio-' + e.n + '-' + e.key))
+        add(L.data().owner, 'rinvio', `Giornata ${e.n}: ${e.partita} rinviata o sospesa. Se non si recupera prima del turno dopo, segnala "Rinviata" nei Risultati.`, 'rinvio-' + e.n);
       if (e.tipo === 'aperta' && once('aperta-' + e.n))
         uids.forEach(u => add(u, 'aperta', `Giornata ${e.n} aperta${e.deadline ? ': consegna entro ' + when(e.deadline) : ''}.`, 'aperta-' + e.n));
       if (e.tipo === 'chiusa' && once('chiusa-' + e.n))
@@ -68,6 +75,7 @@ export async function notifica(fs, leagues, events, now, messaging = null) {
       }
     }
 
+    curN = null;
     // promemoria a chi non ha ancora consegnato
     for (const d of (await L.ref.collection('giornate').get()).docs) {
       const r = d.data(); if (r.calcolata || !r.deadline || !isNum(r.num)) continue;
@@ -76,7 +84,7 @@ export async function notifica(fs, leagues, events, now, messaging = null) {
       if (!once('promemoria-' + r.num)) continue;
       for (const u of uids) {
         const p = await slip(u, +r.num);
-        if (p?.status !== 'consegnato') add(u, 'promemoria', `Giornata ${r.num}: non hai ancora consegnato la schedina! Scadenza ${when(r.deadline)}.`, 'promemoria-' + r.num);
+        if (p?.status !== 'consegnato') add(u, 'promemoria', `Giornata ${r.num}: non hai ancora consegnato la schedina! Scadenza ${when(r.deadline)}.`, 'promemoria-' + r.num, +r.num);
       }
     }
     if (Object.keys(newSent).length) await stRef.set({ sent: newSent }, { merge: true });
@@ -95,7 +103,11 @@ export async function notifica(fs, leagues, events, now, messaging = null) {
     const title = keep.length === 1 ? `Fanta Bet · ${keep[0].lega}` : `Fanta Bet · ${keep.length} novità`;
     const body = keep.map(x => x.line).join('\n').slice(0, 900);
     const tag = keep.length === 1 && keep[0].tag ? keep[0].tag : 'fb-' + now.getTime();
-    const res = await messaging.sendEach(toks.map(t => ({ token: t.data().token, data: { title, body, tag, url: '/' }, webpush: { headers: { Urgency: 'high', TTL: '86400' } } })));
+    // toccando la notifica si apre la giornata giusta: la schedina per "aperta"/"promemoria", altrimenti i punteggi
+    const sameRound = keep.every(x => x.legaId === keep[0].legaId && x.n === keep[0].n) && keep[0].legaId && keep[0].n;
+    const view = keep.every(x => x.tipo === 'aperta' || x.tipo === 'promemoria') ? 'pronostici' : keep.some(x => x.tipo === 'rinvio') ? 'partite' : 'punteggi';
+    const url = sameRound ? `/?lega=${encodeURIComponent(keep[0].legaId)}&g=${keep[0].n}&v=${view}` : '/';
+    const res = await messaging.sendEach(toks.map(t => ({ token: t.data().token, data: { title, body, tag, url }, webpush: { headers: { Urgency: 'high', TTL: '86400' } } })));
     n++; devices += res.successCount;
     for (let i = 0; i < res.responses.length; i++) {
       const c = res.responses[i].error?.code || '';

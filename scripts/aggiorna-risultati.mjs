@@ -124,6 +124,7 @@ if (stato.stagione && +stato.stagione !== SEASON && SEASON > +stato.stagione) {
 const rounds = {};
 if (+stato.stagione === SEASON || !stato.stagione) snap.docs.forEach(d => { const x = d.data(); if (isNum(x.num)) rounds[+x.num] = { ref: d.ref, data: x }; });
 const notes = {}; // numero giornata -> note
+const rinvii = []; // partite rinviate/sospese su ESPN: { n, home, away }
 const note = (n, t) => { (notes[n] = notes[n] || []).push(t); };
 
 for (const n of Object.keys(rounds).map(Number).sort((a, b) => a - b)) {
@@ -162,7 +163,7 @@ for (const n of Object.keys(rounds).map(Number).sort((a, b) => a - b)) {
           m.scorersDone = true;
         }
       }
-    } else if (VOID.includes(f.status)) waiting.push(`${m.home}-${m.away} rinviata/sospesa (l'organizzatore decide se segnarla nulla)`);
+    } else if (VOID.includes(f.status)) { rinvii.push({ n, home: m.home, away: m.away }); waiting.push(`${m.home}-${m.away} rinviata/sospesa (l'organizzatore decide se segnarla nulla)`); }
     else if (!isNum(m.hg) && new Date(f.date).getTime() < now.getTime()) waiting.push(`${m.home}-${m.away}`);
   }
   // si chiude solo quando ci sono anche i marcatori: dopo la chiusura non si riguardano più
@@ -243,6 +244,11 @@ for (const L of leagues) {
       if (!m.apiId && mm.apiId) { m.apiId = mm.apiId; m.kickoff = mm.kickoff; changed = true; }
       if (!m.nullo && (!isNum(m.hg) || !isNum(m.ag)) && isNum(mm.hg) && isNum(mm.ag)) { m.hg = mm.hg; m.ag = mm.ag; changed = true; filled++; events.push({ L, tipo: 'risultato', n, i: ms.indexOf(m), m: { ...m } }); }
     });
+    // partite rinviate: avviso all'organizzatore se nella lega non è ancora segnata nulla né ha un risultato
+    for (const x of rinvii.filter(x => x.n === n)) {
+      const m = ms.find(y => y.home && same(y.home, x.home) && same(y.away, x.away));
+      if (m && !m.nullo && !(isNum(m.hg) && isNum(m.ag))) events.push({ L, tipo: 'rinvio', n, key: pairKey(x.home, x.away), partita: `${x.home}–${x.away}` });
+    }
     const sc = [...(r.scorers || [])];
     for (const s of (M.scorers || []).filter(s => s.auto)) {
       if (sc.some(x => x.auto && x.apiFixture === s.apiFixture && tokens(x.name) === tokens(s.name))) continue;
