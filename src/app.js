@@ -556,7 +556,7 @@ function viewScores(r,n){
   return h}
 
 /* ---------- v2.1: Home, Altro e pagine con "Indietro" ---------- */
-const notifCard=()=>pushSt==='off'&&!pushNo()?`<section class="sheet"><div class="row spread"><div><b>Vuoi le notifiche?</b><div class="small muted">Giornata aperta, promemoria prima della scadenza, 1X2, risultati esatti e marcatori presi.</div></div><div class="row"><button class="btn primary" data-act="push-on">Attiva</button><button class="btn" data-act="push-no">No grazie</button></div></div></section>`:'';
+const notifCard=()=>pushSt==='off'&&!pushNo()?`<section class="sheet"><div class="row spread"><div><b>Vuoi le notifiche?</b><div class="small muted">Giornata aperta, promemoria prima della scadenza, punti presi, recap della sera e di fine giornata, sorpassi.</div></div><div class="row"><button class="btn primary" data-act="push-on">Attiva</button><button class="btn" data-act="push-no">No grazie</button></div></div></section>`:'';
 function countdown(iso){const ms=new Date(iso)-Date.now();if(!(ms>0))return'';const m=Math.floor(ms/60000),d=Math.floor(m/1440),h=Math.floor(m%1440/60);return d?`${d}g ${h}h`:h?`${h}h ${m%60}m`:`${m%60} min`}
 function miniTable(rows,nums){const mine=myPid();const last=nums[nums.length-1];
   return`<table class="mini">${rows.map(r=>{const l=last?r.per[last]?.total??0:0;return`<tr class="${r.rank===1?'first':''} ${r.pid===mine?'me':''}"><td style="width:34px"><span class="pos-n">${r.rank}</span></td><td class="nm">${esc(pname(r.pid))}${r.tot<rows[0].tot?`<div class="small muted">−${fmtN(r1(rows[0].tot-r.tot))}</div>`:''}</td><td class="r small ${l<0?'neg':'muted'}">${nums.length?fmt(l):''}</td><td class="r pts">${fmtN(r.tot)}</td></tr>`}).join('')}</table>`}
@@ -798,7 +798,7 @@ async function createLeague(nome,pw){
 /* ---------- account: dati e preferenze (notifiche) ---------- */
 let pushSt='no',acct={},inLeague=false,pushBusy=false;
 const pushNo=()=>{try{return localStorage.getItem('fb-push-no')==='1'}catch(e){return false}};
-const NOTIF=[['aperta','Giornata aperta (con la scadenza)',true],['promemoria','Promemoria 1 ora prima della scadenza, se non hai consegnato',true],['x12','1X2 preso',true],['esatto','Risultato esatto preso',true],['marcatore','Il tuo marcatore ha segnato',true],['risultati','Tutti i risultati, anche quando il tuo 1X2 è sbagliato',false],['chiusa','Giornata confermata in classifica',true]];
+const NOTIF=[['aperta','Giornata aperta (con la scadenza)',true],['vigilia','Promemoria la sera prima della scadenza (dalle 20), se non hai consegnato',true],['promemoria','Promemoria 1 ora prima della scadenza, se non hai consegnato',true],['solotu','Quando tutti gli altri hanno consegnato e manchi solo tu',true],['x12','1X2 preso',true],['esatto','Risultato esatto preso',true],['marcatore','Il tuo marcatore ha segnato',true],['recap','Recap della sera nei giorni di partita (verso le 23:30)',true],['chiusa','Recap di fine giornata: punti, posizione e migliore di giornata',true],['sorpasso','Sorpassi in classifica',true],['risultati','Tutti i risultati, anche quando il tuo 1X2 è sbagliato',false]];
 const prefOn=(k,def)=>acct.notifiche?.[k]===undefined?def:!!acct.notifiche[k];
 function viewAccount(){
   const leghe=Object.entries(acct.leghe||{});const pid=inLeague?myPid():null;
