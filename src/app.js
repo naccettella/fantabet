@@ -290,19 +290,27 @@ let lastHtml='';
 
 /* ---------- statistiche personali ---------- */
 const COLORS=['#34c759','#ff3b30','#007aff','#ff9500','#af52de','#30b0c7','#ff2d55','#5856d6','#a2845e','#8e8e93'];
-function viewTrend(rows,nums){if(nums.length<2)return'';
-  // posizione in classifica dopo ogni giornata (senza i punti manuali)
-  const cum={};PIDS.forEach(p=>cum[p]=0);const pos={};PIDS.forEach(p=>pos[p]=[]);
-  for(const n of nums){PIDS.forEach(p=>{cum[p]+=rows.find(r=>r.pid===p).per[n].total});
-    const sorted=[...PIDS].sort((a,b)=>cum[b]-cum[a]);PIDS.forEach(p=>pos[p].push(sorted.findIndex(q=>cum[q]===cum[p])+1))}
-  const W=600,H=40+PIDS.length*34,L=30,R=12,T=14,B=26,xs=i=>L+(W-L-R)*(i/(nums.length-1)),ys=k=>T+(H-T-B)*((k-1)/Math.max(1,PIDS.length-1));
-  let svg=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Posizione in classifica giornata per giornata" style="max-width:100%;height:auto">`;
-  for(let k=1;k<=PIDS.length;k++)svg+=`<text x="4" y="${ys(k)+4}" font-size="12" fill="currentColor" opacity=".6">${k}°</text><line x1="${L}" x2="${W-R}" y1="${ys(k)}" y2="${ys(k)}" stroke="currentColor" opacity=".1"/>`;
-  const step=Math.ceil(nums.length/12);nums.forEach((n,i)=>{if(i%step===0||i===nums.length-1)svg+=`<text x="${xs(i)}" y="${H-6}" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">G${n}</text>`});
-  PIDS.forEach((p,j)=>{const c=COLORS[j%COLORS.length];svg+=`<polyline fill="none" stroke="${c}" stroke-width="3" stroke-linejoin="round" points="${pos[p].map((k,i)=>xs(i)+','+ys(k)).join(' ')}"/>`;
-    svg+=`<circle cx="${xs(nums.length-1)}" cy="${ys(pos[p][nums.length-1])}" r="4.5" fill="${c}"/>`});
+function viewTrend(rows,nums){if(!nums.length)return'';
+  // punti totali dopo ogni giornata, partendo da 0 (i punti manuali non sono nelle linee)
+  const cum={};PIDS.forEach(p=>cum[p]=[0]);
+  for(const n of nums)PIDS.forEach(p=>{const a=cum[p];a.push(r1(a[a.length-1]+(rows.find(r=>r.pid===p).per[n].total||0)))});
+  const all=PIDS.flatMap(p=>cum[p]);let lo=Math.min(0,...all),hi=Math.max(0,...all);if(hi===lo)hi=lo+10;
+  const raw=(hi-lo)/5,mag=Math.pow(10,Math.floor(Math.log10(raw))),step=[1,2,2.5,5,10].map(k=>k*mag).find(s=>s>=raw);
+  lo=Math.floor(lo/step)*step;hi=Math.ceil(hi/step)*step;
+  const W=600,H=300,L=60,R=14,T=14,B=36,cnt=nums.length,xs=i=>L+(W-L-R)*(i/cnt),ys=v=>T+(H-T-B)*((hi-v)/(hi-lo));
+  let svg=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Punti totali di ogni giocatore giornata per giornata" style="max-width:100%;height:auto">`;
+  for(let v=lo;v<=hi+1e-9;v+=step){const y=ys(v);svg+=`<text x="${L-10}" y="${y+6}" font-size="19" text-anchor="end" fill="currentColor" opacity=".6">${fmtN(r1(v))}</text><line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="currentColor" opacity="${Math.abs(v)<1e-9?'.45':'.1'}"${Math.abs(v)<1e-9?' stroke-width="1.5"':''}/>`}
+  const every=Math.ceil(cnt/10);
+  nums.forEach((n,i)=>{if((i+1)%every===0||i===cnt-1)svg+=`<text x="${xs(i+1)}" y="${H-6}" font-size="18" text-anchor="${i===cnt-1?'end':'middle'}" fill="currentColor" opacity=".6">G${n}</text>`});
+  const ord=[...PIDS].sort((a,b)=>cum[a][cnt]-cum[b][cnt]);// il primo in classifica disegnato per ultimo, sopra gli altri
+  ord.forEach(p=>{const c=COLORS[PIDS.indexOf(p)%COLORS.length],pts=cum[p].map((v,i)=>[xs(i),ys(v)]);
+    svg+=`<polyline fill="none" stroke="${c}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" points="${pts.map(q=>q.join(',')).join(' ')}"/>`;
+    if(cnt<=15)pts.slice(1,-1).forEach(q=>{svg+=`<circle cx="${q[0]}" cy="${q[1]}" r="3" fill="${c}"/>`});
+    const e=pts[pts.length-1];svg+=`<circle cx="${e[0]}" cy="${e[1]}" r="5.5" fill="${c}" stroke="var(--paper)" stroke-width="2"/>`});
   svg+='</svg>';
-  return`<section class="sheet"><h3>Andamento in classifica</h3>${svg}<div class="row small">${PIDS.map((p,j)=>`<span class="row" style="gap:5px"><span style="width:14px;height:4px;border-radius:2px;background:${COLORS[j%COLORS.length]}"></span>${esc(pname(p))}</span>`).join('')}</div></section>`}
+  const leg=[...ord].reverse().map(p=>`<span class="row" style="gap:6px"><span style="width:14px;height:4px;border-radius:2px;background:${COLORS[PIDS.indexOf(p)%COLORS.length]}"></span>${esc(pname(p))} <b>${fmtN(cum[p][cnt])}</b></span>`).join('');
+  const hasAdj=rows.some(r=>r.adj);
+  return`<section class="sheet"><h3>Andamento punti</h3>${svg}<div class="row small" style="gap:6px 14px">${leg}</div>${hasAdj?'<p class="small muted" style="margin:6px 0 0">Le linee contano solo i punti delle giornate, senza i punti manuali.</p>':''}</section>`}
 const pct=(a,b)=>b?Math.round(a/b*100)+'%':'—';
 function playerStats(rows,nums){return rows.map(r=>{let h=0,v=0,eh=0,et=0,sh=0,st=0,del=0,best=null,bestN=null;
   for(const n of nums){const s=r.per[n];if(s.state==='consegnato')del++;h+=s.hits||0;v+=s.state==='consegnato'?s.valid:0;
