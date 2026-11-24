@@ -61,20 +61,30 @@ function slipLocked(r,pid){if(me.owner)return ownerLocked(r,pid);if(pid!==myPid(
 
 /* exact results (same match, same score) and scorers belong to whoever delivered them first */
 const exKey=e=>isNum(e.h)&&isNum(e.a)&&+e.m>=0?`${+e.m}:${+e.h}-${+e.a}`:'';
-const scKey=s=>tokens(s.name).join(' ');
+/* stesso giocatore? "Lautaro" = "Lautaro Martinez" = "Lautaro Martínez": prima si cerca il nome completo
+   nelle rose della Serie A, se non è univoco si confrontano le parole del nome */
+function playerOf(name){const pt=tokens(name);if(!pt.length)return null;const ns=new Set();
+  for(const n of Object.keys(rose)){const st=tokens(n);const long=st.filter(x=>x.length>=3);
+    if(pt.every(x=>st.includes(x))||(long.length&&long.every(x=>pt.includes(x))))ns.add(n)}
+  return ns.size===1?[...ns][0]:null}
+function samePlayer(a,b){if(!String(a||'').trim()||!String(b||'').trim())return false;
+  const pa=playerOf(a),pb=playerOf(b);if(pa&&pb)return pa===pb;
+  const A=tokens(a).filter(t=>t.length>=3),B=tokens(b).filter(t=>t.length>=3);
+  if(!A.length||!B.length)return tokens(a).join(' ')===tokens(b).join(' ');
+  return A.every(t=>B.includes(t))||B.every(t=>A.includes(t))}
 function takenBy(r,pid,before){
-  const ex={},sc={};
+  const ex={},sc=[];
   for(const q of PIDS){if(q===pid)continue;const o=getPred(r,q);
     if(o.status!=='consegnato'||!o.consegnata)continue;if(before&&!(o.consegnata<before))continue;
     o.exact.forEach(e=>{const k=exKey(e);if(k&&!ex[k])ex[k]=q});
-    o.scorers.forEach(x=>{const k=scKey(x);if(k&&!sc[k])sc[k]=q})}
+    o.scorers.forEach(x=>{if(String(x.name||'').trim())sc.push({name:x.name,q})})}
   return{ex,sc}}
 /* items of pid's slip that clash with a slip delivered earlier; with no delivery time yet, any delivered slip counts */
 function clashes(r,pid){
   const p=getPred(r,pid);if(p.status==='consegnato'&&!p.consegnata)return{ex:{},sc:{}};
   const t=takenBy(r,pid,p.consegnata||null);const ex={},sc={};
   p.exact.forEach((e,k)=>{const q=t.ex[exKey(e)];if(q)ex[k]=q});
-  p.scorers.forEach((x,k)=>{const q=t.sc[scKey(x)];if(q)sc[k]=q});
+  p.scorers.forEach((x,k)=>{const o=t.sc.find(y=>samePlayer(x.name,y.name));if(o)sc[k]=o.q});
   return{ex,sc}}
 
 /* ---------- scoring ---------- */
@@ -123,11 +133,11 @@ function scoreRound(r,pid){
     return{e,m,b,state:hit?'preso':'sbagliato'}});
   const exact=r1(exSum*MULT_EX[exactHits]);
   let scSum=0,scored=0,named=0;
-  const usedS=new Set();
+  const usedS=[];
   const scRows=p.scorers.map((s,k)=>{
     if(!s.name.trim())return{s,state:'vuoto',pts:0};
     if(cl.sc[k])return{s,state:'altrui',by:cl.sc[k],goals:0,names:[],pts:0};
-    const key=tokens(s.name).join(' ');if(usedS.has(key))return{s,state:'doppione',goals:0,names:[],pts:0};usedS.add(key);named++;
+    if(usedS.some(n=>samePlayer(n,s.name)))return{s,state:'doppione',goals:0,names:[],pts:0};usedS.push(s.name);named++;
     const f=findGoals(r,s.name);const bp=ROLE[s.role]?.p||4;
     const pts=f.goals>0?bp*Math.min(f.goals,3):0;if(f.goals>0)scored++;scSum+=pts;
     return{s,goals:f.goals,names:f.names,pts,state:f.goals>0?'segna':'no'}});
@@ -262,7 +272,10 @@ function armDeadline(){clearTimeout(dlTimer);const now=Date.now();
   const next=Object.values(rounds).map(r=>r.deadline?new Date(r.deadline).getTime():NaN).filter(t=>t>now).sort((a,b)=>a-b)[0];
   if(next)dlTimer=setTimeout(()=>{document.activeElement?.blur?.();render();toast('Scadenza passata: le schedine sono chiuse.')},Math.min(next-now+500,2147483000))}
 function render(){
-  if(!live())return;armDeadline();
+  if(!live())return;
+  /* fuori da una lega lo schermo è quello di scelta lega (o account/super admin): non va sovrascritto */
+  if(!inLeague)return;
+  armDeadline();
   document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',!ui.account&&b.dataset.tab===ui.tab));
   const v=$('#view');
   const html=ui.account?viewAccount():ui.page?viewPage():ui.tab==='home'?viewHome():ui.tab==='classifica'?viewStandings():ui.tab==='giornata'?viewRound():ui.tab==='chat'?viewChat():viewAltro();
@@ -367,7 +380,7 @@ function viewStandingsMain(){
     h+=`<div class="scroll"><table><thead><tr><th>#</th><th class="l">Giocatore</th><th>Punti</th><th>Ultima</th><th>Record</th><th>Punti 1X2</th><th>Esatti</th>${hasAdj?'<th>Manuali</th>':''}</tr></thead><tbody>`;
     const last=nums[nums.length-1];
     rows.forEach(r=>{const l=r.per[last]?.total??0;
-      h+=`<tr class="${r.rank===1?'lead':''}"><td class="rank">${r.rank}</td><td class="l"><b>${esc(pname(r.pid))}</b></td><td class="pts">${fmtN(r.tot)}${r.tot<rows[0].tot?`<div class="gap">−${fmtN(r1(rows[0].tot-r.tot))}</div>`:''}</td><td class="${l<0?'neg':'pos'}">${fmt(l)}</td><td>${fmtN(r.rec??0)}</td><td>${fmtN(r.x12)}</td><td>${r.ex}</td>${hasAdj?`<td class="${r.adj<0?'neg':r.adj>0?'pos':''}">${r.adj?fmt(r.adj):'—'}</td>`:''}</tr>`});
+      h+=`<tr class="${r.rank===1?'lead':''}"><td class="rank">${r.rank}</td><td class="l nm"><b>${esc(pname(r.pid))}</b></td><td class="pts">${fmtN(r.tot)}${r.tot<rows[0].tot?`<div class="gap">−${fmtN(r1(rows[0].tot-r.tot))}</div>`:''}</td><td class="${l<0?'neg':'pos'}">${fmt(l)}</td><td>${fmtN(r.rec??0)}</td><td>${fmtN(r.x12)}</td><td>${r.ex}</td>${hasAdj?`<td class="${r.adj<0?'neg':r.adj>0?'pos':''}">${r.adj?fmt(r.adj):'—'}</td>`:''}</tr>`});
     h+=`</tbody></table></div><div class="small muted">Parità: record di giornata, poi punti 1X2, poi risultati esatti presi, poi sorteggio o partita secca.</div>`;
   }
   h+=`</section>`;
@@ -542,7 +555,7 @@ function viewScores(r,n){
 const notifCard=()=>pushSt==='off'&&!pushNo()?`<section class="sheet"><div class="row spread"><div><b>Vuoi le notifiche?</b><div class="small muted">Giornata aperta, promemoria prima della scadenza, 1X2, risultati esatti e marcatori presi.</div></div><div class="row"><button class="btn primary" data-act="push-on">Attiva</button><button class="btn" data-act="push-no">No grazie</button></div></div></section>`:'';
 function countdown(iso){const ms=new Date(iso)-Date.now();if(!(ms>0))return'';const m=Math.floor(ms/60000),d=Math.floor(m/1440),h=Math.floor(m%1440/60);return d?`${d}g ${h}h`:h?`${h}h ${m%60}m`:`${m%60} min`}
 function miniTable(rows,nums){const mine=myPid();const last=nums[nums.length-1];
-  return`<table class="mini">${rows.map(r=>{const l=last?r.per[last]?.total??0:0;return`<tr class="${r.rank===1?'first':''} ${r.pid===mine?'me':''}"><td style="width:34px"><span class="pos-n">${r.rank}</span></td><td>${esc(pname(r.pid))}${r.tot<rows[0].tot?`<div class="small muted">−${fmtN(r1(rows[0].tot-r.tot))}</div>`:''}</td><td class="r small ${l<0?'neg':'muted'}">${nums.length?fmt(l):''}</td><td class="r pts">${fmtN(r.tot)}</td></tr>`}).join('')}</table>`}
+  return`<table class="mini">${rows.map(r=>{const l=last?r.per[last]?.total??0:0;return`<tr class="${r.rank===1?'first':''} ${r.pid===mine?'me':''}"><td style="width:34px"><span class="pos-n">${r.rank}</span></td><td class="nm">${esc(pname(r.pid))}${r.tot<rows[0].tot?`<div class="small muted">−${fmtN(r1(rows[0].tot-r.tot))}</div>`:''}</td><td class="r small ${l<0?'neg':'muted'}">${nums.length?fmt(l):''}</td><td class="r pts">${fmtN(r.tot)}</td></tr>`}).join('')}</table>`}
 function mySlipPeek(){const mine=myPid();if(!mine)return'';
   const nums=Object.keys(rounds).map(Number).sort((a,b)=>a-b).filter(n=>rounds[n].matches?.some(m=>validMatch(m))&&getPred(rounds[n],mine).status==='consegnato');
   const n=nums[nums.length-1];if(!n)return'';const r=rounds[n];if(!canSee(r,mine))return'';const p=getPred(r,mine);
@@ -730,7 +743,7 @@ async function leagueView(msg){
   <section class="sheet"><h2>Entra in una lega</h2><div class="small muted">Scrivi il nome della lega e la password che ti ha dato l'organizzatore.</div>
     <div class="row"><input type="text" id="j-nome" placeholder="Nome della lega" style="flex:1 1 160px"><input type="password" id="j-pw" placeholder="Password" style="flex:1 1 140px"><button class="btn primary" id="j-go">Entra</button></div><div id="j-extra"></div></section>
   <section class="sheet"><h2>Crea una lega</h2><div class="small muted">Diventi l'organizzatore. Poi manda agli amici il link dell'app, il nome della lega e la password.</div>
-    <div class="row"><input type="text" id="c-nome" placeholder="Nome della lega" style="flex:1 1 160px"><input type="password" id="c-pw" placeholder="Password (almeno 4 caratteri)" style="flex:1 1 140px"><button class="btn" id="c-go">Crea</button></div></section>
+    <div class="row"><input type="text" id="c-nome" placeholder="Nome della lega" style="flex:1 1 160px"><input type="password" id="c-pw" placeholder="Password (min. 4)" style="flex:1 1 140px"><button class="btn" id="c-go">Crea</button></div></section>
   ${msg?`<div class="small neg">${esc(msg)}</div>`:''}`;
   v.querySelectorAll('[data-lega]').forEach(b=>b.onclick=async()=>{setLeague(b.dataset.lega);const L=await db.doc('leghe/'+b.dataset.lega).get().catch(()=>null);if(!L)return leagueView('Questa lega non esiste più.');openLeague(b.dataset.lega,L)});
   if(me.super)$('#sa-go').onclick=()=>superView();

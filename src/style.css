@@ -94,6 +94,8 @@ th{font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.02em;col
 td{padding:11px 8px;border-bottom:.5px solid var(--line);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 th:first-child,td:first-child,th.l,td.l{text-align:left}
 tr:last-child td{border-bottom:0}
+/* nomi lunghi: vanno a capo invece di spingere fuori i punti */
+td.nm{white-space:normal;overflow-wrap:anywhere;min-width:6.5em}
 .rank{font:700 20px var(--f-num);width:1.6em;color:var(--muted)}
 .lead .rank{color:var(--gold)}
 .pts{font:700 22px var(--f-num);letter-spacing:-.02em}
@@ -177,6 +179,9 @@ label.row input[type=checkbox]{flex:none;margin-top:1px}
   .scorer-line{grid-template-columns:1fr auto auto;}
   .scorer-line .team{grid-column:1/-1;order:5}
   .brand{font-size:32px}
+  /* telefoni stretti: il nome sopra, a tutta larghezza; sotto ruolo/account e bollino */
+  .scorer,.plink{grid-template-columns:minmax(0,1fr) auto}
+  .scorer input[type=text],.plink input[type=text]{grid-column:1/-1}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 
